@@ -1,0 +1,9 @@
+runs-on: 'ubuntu-latest'
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+
+  - uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
+    with:
+      dockerfile: ./ci.dockerfile
+      failure-threshold: error

@@ -1,0 +1,11 @@
+runs-on: 'ubuntu-latest'
+steps:
+  - name: Run Trivy vulnerability scanner
+    uses: aquasecurity/trivy-action@5681af892cd0f4997658e2bacc62bd0a894cf564 # 0.27.0
+    with:
+      image-ref: '<INSERT NAME HERE>'
+      format: 'table'
+      exit-code: '1'
+      ignore-unfixed: true
+      vuln-type: 'os,library'
+      severity: 'CRITICAL,HIGH'
