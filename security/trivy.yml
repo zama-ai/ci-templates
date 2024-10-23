@@ -1,9 +1,15 @@
 runs-on: 'ubuntu-latest'
 steps:
+  - name: Checkout code
+    uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+
+  - name: Build an image from Dockerfile
+    run: docker build -t docker.io/my-organization/my-app:${{ github.sha }} .
+
   - name: Run Trivy vulnerability scanner
     uses: aquasecurity/trivy-action@5681af892cd0f4997658e2bacc62bd0a894cf564 # 0.27.0
     with:
-      image-ref: '<INSERT NAME HERE>'
+      image-ref: 'docker.io/my-organization/my-app:${{ github.sha }}'
       format: 'table'
       exit-code: '1'
       ignore-unfixed: true
