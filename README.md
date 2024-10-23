@@ -1,4 +1,4 @@
-# ci-templates
+# Github CI templates
 
 Continuous Integration templates for Security and Quality. These snippets are steps to automatically check security and quality in your projects.
 
@@ -6,7 +6,7 @@ Continuous Integration templates for Security and Quality. These snippets are st
 
 - Lint your commit messages with [commitlint](./lint/commit-lint.yml)
 - Lint your workflow files with [actionlint](./lint/action-lint.yml)
-- Pin you Github action by commit with [action-pin](./lint/action-pin.yml)
+- Pin your Github actions by commit with [action-pin](./lint/action-pin.yml)
 - Check commit signature in PR with [check-signed-commits-action](./security/commit-sign.yml)
 
 ## Docker
