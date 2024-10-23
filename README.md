@@ -12,6 +12,10 @@ Continuous Integration templates for Security and Quality. These snippets are st
 ## Docker
 
 - Lint your dockerfile with [hadolint](./lint/hadolint.yml)
+
+> [!TIP]
+> you could add exception on a particular line of your dockerfile with `# hadolint ignore=DL3041`
+
 - Test your dockerfile security with [trivy](./security/trivy.yml)
 
 ## Helm
