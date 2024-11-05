@@ -1,9 +1,9 @@
-runs-on: 'ubuntu-latest'
+runs-on: ubuntu-latest
+container:
+  image: hadolint/hadolint@sha256:27173fe25e062448490a32de410c08491c626a0bef360aa2ce5d5bdd9384b50d #2.12.0-debian
 steps:
-  - name: Checkout repository
-    uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
+  - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
 
-  - uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
-    with:
-      dockerfile: ./ci.dockerfile
-      failure-threshold: none
+  # -V is mainly used to print the config used
+  - name: Lint All Dockerfiles (adapt find to suit your needs)
+    run: hadolint -V `find -name "*Dockerfile*" |xargs `
