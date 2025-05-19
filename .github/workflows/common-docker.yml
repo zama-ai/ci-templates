@@ -85,6 +85,10 @@ jobs:
     outputs:
       image: ${{ steps.push.outputs.image }}
       digest: ${{ steps.push.outputs.digest }}
+      image-amd64-prod: ${{ steps.export-image-and-digest.outputs.image-amd64-prod }}
+      digest-amd64-prod: ${{ steps.export-image-and-digest.outputs.digest-amd64-prod }}
+      image-arm64-prod: ${{ steps.export-image-and-digest.outputs.image-arm64-prod }}
+      digest-arm64-prod: ${{ steps.export-image-and-digest.outputs.digest-arm64-prod }}
     strategy:
       matrix:
         include:
@@ -96,14 +100,14 @@ jobs:
             runs-on: ${{ inputs.runs-on-arm }}
             platform-tag: arm64
             docker-target: prod
-          - platform: linux/amd64
-            runs-on: ${{ inputs.runs-on-amd }}
-            platform-tag: amd64
-            docker-target: dev
-          - platform: linux/arm64
-            runs-on: ${{ inputs.runs-on-arm }}
-            platform-tag: arm64
-            docker-target: dev
+          # - platform: linux/amd64
+          #   runs-on: ${{ inputs.runs-on-amd }}
+          #   platform-tag: amd64
+          #   docker-target: dev
+          # - platform: linux/arm64
+          #   runs-on: ${{ inputs.runs-on-arm }}
+          #   platform-tag: arm64
+          #   docker-target: dev
     runs-on: ${{ matrix.runs-on }}
     steps:
       - name: Checkout Project
@@ -220,6 +224,21 @@ jobs:
           cache-from: type=s3,blobs_prefix=cache/${{ github.repository }}/,manifests_prefix=cache/${{ github.repository }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }}
           cache-to: type=s3,blobs_prefix=cache/${{ github.repository }}/,manifests_prefix=cache/${{ github.repository }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }},mode=max
 
+      - name: Export image and digest
+        id: export-image-and-digest
+        if: matrix.docker-target == 'prod'
+        run: |
+          if ${{ matrix.platform-tag == 'amd64' }}
+          then
+            echo "image-amd64-prod=${{ steps.push.outputs.image }}" >> $GITHUB_OUTPUT
+            echo "digest-amd64-prod=${{ steps.push.outputs.digest }}" >> $GITHUB_OUTPUT
+          fi
+          if ${{ matrix.platform-tag == 'arm64' }}
+          then
+            echo "image-arm64-prod=${{ steps.push.outputs.image }}" >> $GITHUB_OUTPUT
+            echo "digest-arm64-prod=${{ steps.push.outputs.digest }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Generate artifact attestation
         if: matrix.docker-target == 'prod'
         uses: actions/attest-build-provenance@db473fddc028af60658334401dc6fa3ffd8669fd  #v2.3.0
@@ -243,6 +262,21 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           sbom-path: 'sbom-${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}.json'
           push-to-registry: true
+
+  provenance:
+    needs: [build-and-push-docker]
+    permissions:
+      actions: read # for detecting the Github Actions environment.
+      id-token: write # for creating OIDC tokens for signing.
+      packages: write # for uploading attestations.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
+    with:
+      image: ${{ needs.build-and-push-docker.outputs.image-amd64-prod }}
+      digest: ${{ needs.build-and-push-docker.outputs.digest-amd64-prod }}
+      registry-username: ${{ github.actor }}
+    secrets:
+      registry-password: ${{ secrets.GITHUB_TOKEN }}
+
 
   create-manifest:
     needs: [determine-tag, build-and-push-docker]
