@@ -244,17 +244,6 @@ jobs:
           sbom-path: 'sbom-${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}.json'
           push-to-registry: true
 
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb  # v3.8.1
-
-      - name: Download attestation
-        run: |
-          cosign --verbose --registry-username=${{ github.actor }} --registry-password=${{ secrets.GITHUB_TOKEN }} download attestation ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}
-
-      - name: Verify attestation
-        run: |
-          cosign --verbose --registry-username=${{ github.actor }} --registry-password=${{ secrets.GITHUB_TOKEN }} verify attestation ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}
-
   create-manifest:
     needs: [determine-tag, build-and-push-docker]
     if: inputs.push_image
