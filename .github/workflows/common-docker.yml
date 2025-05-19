@@ -249,7 +249,11 @@ jobs:
 
       - name: Download attestation
         run: |
-          cosign --verbose download attestation ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}
+          cosign --verbose --registry-username=${{ github.actor }} --registry-password=${{ secrets.GITHUB_TOKEN }} download attestation ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}
+
+      - name: Verify attestation
+        run: |
+          cosign --verbose --registry-username=${{ github.actor }} --registry-password=${{ secrets.GITHUB_TOKEN }} verify attestation ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}
 
   create-manifest:
     needs: [determine-tag, build-and-push-docker]
