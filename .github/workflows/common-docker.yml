@@ -239,29 +239,29 @@ jobs:
             echo "digest-arm64-prod=${{ steps.push.outputs.digest }}" >> $GITHUB_OUTPUT
           fi
 
-      - name: Generate artifact attestation
-        if: matrix.docker-target == 'prod'
-        uses: actions/attest-build-provenance@db473fddc028af60658334401dc6fa3ffd8669fd  #v2.3.0
-        with:
-          subject-name: ghcr.io/zama-ai/${{ inputs.image-name }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true
+      # - name: Generate artifact attestation
+      #   if: matrix.docker-target == 'prod'
+      #   uses: actions/attest-build-provenance@db473fddc028af60658334401dc6fa3ffd8669fd  #v2.3.0
+      #   with:
+      #     subject-name: ghcr.io/zama-ai/${{ inputs.image-name }}
+      #     subject-digest: ${{ steps.push.outputs.digest }}
+      #     push-to-registry: true
 
-      - name: Generate SBOM
-        if: matrix.docker-target == 'prod'
-        uses: anchore/sbom-action@9f7302141466aa6482940f15371237e9d9f4c34a  # v0.19.0
-        with:
-          image: ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}
-          output-file: sbom-${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}.json
+      # - name: Generate SBOM
+      #   if: matrix.docker-target == 'prod'
+      #   uses: anchore/sbom-action@9f7302141466aa6482940f15371237e9d9f4c34a  # v0.19.0
+      #   with:
+      #     image: ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}
+      #     output-file: sbom-${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}.json
 
-      - name: Add SBOM attestation
-        if: matrix.docker-target == 'prod'
-        uses: actions/attest-sbom@115c3be05ff3974bcbd596578934b3f9ce39bf68  # v2.2.0
-        with:
-          subject-name: ghcr.io/zama-ai/${{ inputs.image-name }}
-          subject-digest: ${{ steps.push.outputs.digest }}
-          sbom-path: 'sbom-${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}.json'
-          push-to-registry: true
+      # - name: Add SBOM attestation
+      #   if: matrix.docker-target == 'prod'
+      #   uses: actions/attest-sbom@115c3be05ff3974bcbd596578934b3f9ce39bf68  # v2.2.0
+      #   with:
+      #     subject-name: ghcr.io/zama-ai/${{ inputs.image-name }}
+      #     subject-digest: ${{ steps.push.outputs.digest }}
+      #     sbom-path: 'sbom-${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}.json'
+      #     push-to-registry: true
 
   provenance:
     needs: [build-and-push-docker]
@@ -270,6 +270,7 @@ jobs:
       image: ${{ needs.build-and-push-docker.outputs.image-amd64-prod }}
       digest: ${{ needs.build-and-push-docker.outputs.digest-amd64-prod }}
       registry-username: ${{ github.actor }}
+      private-repository: true
     secrets:
       registry-password: ${{ secrets.GITHUB_TOKEN }}
 
