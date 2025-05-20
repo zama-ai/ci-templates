@@ -263,12 +263,23 @@ jobs:
       #     sbom-path: 'sbom-${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}.json'
       #     push-to-registry: true
 
-  provenance:
+  provenance-amd64-prod:
     needs: [build-and-push-docker]
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
     with:
-      image: ${{ needs.build-and-push-docker.outputs.image-amd64-prod }}
+      image: ghcr.io/zama-ai/${{ inputs.image-name }}
       digest: ${{ needs.build-and-push-docker.outputs.digest-amd64-prod }}
+      registry-username: ${{ github.actor }}
+      private-repository: true
+    secrets:
+      registry-password: ${{ secrets.GITHUB_TOKEN }}
+
+  provenance-arm64-prod:
+    needs: [build-and-push-docker]
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
+    with:
+      image: ghcr.io/zama-ai/${{ inputs.image-name }}
+      digest: ${{ needs.build-and-push-docker.outputs.digest-arm64-prod }}
       registry-username: ${{ github.actor }}
       private-repository: true
     secrets:
