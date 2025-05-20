@@ -241,6 +241,7 @@ jobs:
 
   provenance-amd64-prod:
     needs: [build-and-push-docker]
+    if: startsWith(github.ref, 'refs/heads/release/') || github.ref == 'refs/heads/main'
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
     with:
       image: ghcr.io/zama-ai/${{ inputs.image-name }}
@@ -252,6 +253,7 @@ jobs:
 
   provenance-arm64-prod:
     needs: [build-and-push-docker]
+    if: startsWith(github.ref, 'refs/heads/release/') || github.ref == 'refs/heads/main'
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
     with:
       image: ghcr.io/zama-ai/${{ inputs.image-name }}
