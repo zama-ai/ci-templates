@@ -5,7 +5,7 @@ Continuous Integration templates for Security and Quality. These snippets are st
 ## Git
 
 - Lint your commit messages with [commitlint](./lint/commit-lint.yml)
-- Lint your workflow files with [actionlint](./lint/action-lint.yml)
+- Lint your workflow files with [actionlint](./lint/action-lint.yml) and [zizmor](./lint/zizmor.yml)
 - Pin your Github actions by commit with [action-pin](./lint/action-pin.yml)
 - Check commit signature in PR with [check-signed-commits-action](./security/commit-sign.yml)
 
