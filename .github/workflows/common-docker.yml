@@ -217,7 +217,7 @@ jobs:
             TARGETARCH=${{ matrix.platform-tag }}
           context: ${{ inputs.docker-context }}
           secrets: BLOCKCHAIN_ACTIONS_TOKEN=${{ secrets.BLOCKCHAIN_ACTIONS_TOKEN }}
-          file: ./docker/${{ inputs.working-directory }}/${{ inputs.docker-file }}
+          file: ${{ inputs.docker-file }}
           platforms: ${{ matrix.platform }}
           push: ${{ inputs.push_image }}
           pull: false
@@ -250,6 +250,7 @@ jobs:
       actions: 'read'
       attestations: 'write'
       packages: 'write'
+      id-token: write
     needs: [build-and-push-docker]
     if: startsWith(github.ref, 'refs/heads/release/') || github.ref == 'refs/heads/main'
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
@@ -266,6 +267,7 @@ jobs:
       actions: 'read'
       attestations: 'write'
       packages: 'write'
+      id-token: write
     needs: [build-and-push-docker]
     if: startsWith(github.ref, 'refs/heads/release/') || github.ref == 'refs/heads/main'
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
