@@ -240,6 +240,11 @@ jobs:
           fi
 
   provenance-amd64-prod:
+    permissions:
+      actions: 'read'
+      attestations: 'write'
+      id-token: 'write'
+      packages: 'write'
     needs: [build-and-push-docker]
     if: startsWith(github.ref, 'refs/heads/release/') || github.ref == 'refs/heads/main'
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
@@ -252,6 +257,11 @@ jobs:
       registry-password: ${{ secrets.GITHUB_TOKEN }}
 
   provenance-arm64-prod:
+    permissions:
+      actions: 'read'
+      attestations: 'write'
+      id-token: 'write'
+      packages: 'write'
     needs: [build-and-push-docker]
     if: startsWith(github.ref, 'refs/heads/release/') || github.ref == 'refs/heads/main'
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
