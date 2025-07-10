@@ -255,7 +255,7 @@ jobs:
       packages: 'write'
       id-token: write
     needs: [build-and-push-docker]
-    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
+    if: github.event_name == 'release'
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
     with:
       image: ghcr.io/zama-ai/${{ inputs.image-name }}
@@ -272,7 +272,7 @@ jobs:
       packages: 'write'
       id-token: write
     needs: [build-and-push-docker]
-    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/main'
+    if: github.event_name == 'release'
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
     with:
       image: ghcr.io/zama-ai/${{ inputs.image-name }}
@@ -317,7 +317,9 @@ jobs:
               --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
 
             docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}
-            docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest
+            if [ "${{ github.event_name }}" = "release" ]; then
+              docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest
+            fi
 
           else
             docker manifest create \
@@ -331,7 +333,9 @@ jobs:
               --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
 
             docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.docker-target }}
-            docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest-${{ matrix.docker-target }}
+            if [ "${{ github.event_name }}" = "release" ]; then
+              docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest-${{ matrix.docker-target }}
+            fi
           fi
 
       - name: Export image name
@@ -340,13 +344,21 @@ jobs:
           if [ "${{ matrix.docker-target }}" = "prod" ]; then
             {
               echo "image-${{ matrix.docker-target }}-with-tag=ghcr.io/zama-ai/${{inputs.image-name}}:${{ needs.determine-tag.outputs.docker_tag }}"
+            } >> "${GITHUB_OUTPUT}"
+          if [ "${{ github.event_name }}" = "release" ]; then
+            {
               echo "image-${{ matrix.docker-target }}-latest=ghcr.io/zama-ai/${{inputs.image-name}}:latest"
             } >> "${GITHUB_OUTPUT}"
+          fi
           else
             {
               echo "image-${{ matrix.docker-target }}-with-tag=ghcr.io/zama-ai/${{inputs.image-name}}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.docker-target }}"
-              echo "image-${{ matrix.docker-target }}-latest=ghcr.io/zama-ai/${{inputs.image-name}}:latest-${{ matrix.docker-target }}"
             } >> "${GITHUB_OUTPUT}"
+            if [ "${{ github.event_name }}" = "release" ]; then
+              {
+                echo "image-${{ matrix.docker-target }}-latest=ghcr.io/zama-ai/${{inputs.image-name}}:latest-${{ matrix.docker-target }}"
+              } >> "${GITHUB_OUTPUT}"
+            fi
           fi
 
       - name: Add image name to job summary
