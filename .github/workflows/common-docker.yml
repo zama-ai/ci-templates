@@ -24,6 +24,10 @@ on:
       image-name:
         type: string
         required: true
+      image-tag:
+        type: string
+        required: false
+        default: ''
       push_image:
         type: boolean
         default: true
@@ -77,7 +81,9 @@ jobs:
       - name: Set Docker Tag
         id: set-tag
         run: |
-          if [[ "${{ github.event_name }}" == "release" ]]; then
+          if [[ -n "${{ inputs.image-tag }}" ]]; then
+            echo "tag=${{ inputs.image-tag }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
             REF="${{ github.ref_name }}"
             VERSION=$(echo "$REF" | rev | cut -d'@' -f1 | rev)
             echo "VERSION: $VERSION"
