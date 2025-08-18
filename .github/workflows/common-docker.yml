@@ -80,6 +80,8 @@ jobs:
 
       - name: Set Docker Tag
         id: set-tag
+        env:
+          COMMIT_HASH: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           if [[ -n "${{ inputs.image-tag }}" ]]; then
             echo "tag=${{ inputs.image-tag }}" >> "$GITHUB_OUTPUT"
@@ -89,9 +91,9 @@ jobs:
             echo "VERSION: $VERSION"
             echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
           elif [[ "${{ github.event_name }}" == "schedule" ]]; then
-            echo "tag=nightly-$(git rev-parse --short "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
+            echo "tag=nightly-$(git rev-parse --short "$COMMIT_HASH")" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=$(git rev-parse --short "$GITHUB_SHA")" >> "$GITHUB_OUTPUT"
+            echo "tag=$(git rev-parse --short "$COMMIT_HASH")" >> "$GITHUB_OUTPUT"
           fi
 
   build-and-push-docker:
