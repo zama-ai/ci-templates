@@ -190,7 +190,7 @@ jobs:
             target/
             /sccache
           key: |
-            ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-dockerfile-${{ hashFiles(inputs.docker-file) }}
+            ${{ runner.os }}-dockerfile-${{ hashFiles(inputs.docker-file) }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: inject cache into docker
         uses: reproducible-containers/buildkit-cache-dance@5b6db76d1da5c8b307d5d2e0706d266521b710de # v3.1.2
