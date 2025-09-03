@@ -131,6 +131,7 @@ jobs:
           echo "RUST_IMAGE_VERSION=$version" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
+        id: setup-buildx
         uses: docker/setup-buildx-action@d70bba72b1f3fd22344832f00baa16ece964efeb # v3.3.0
         with:
           platforms: ${{ matrix.platform }}
@@ -170,11 +171,12 @@ jobs:
             target/
             /sccache
           key: |
-            ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+            ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-dockerfile-${{ hashFiles(inputs.docker-file) }}
 
       - name: inject cache into docker
         uses: reproducible-containers/buildkit-cache-dance@5b6db76d1da5c8b307d5d2e0706d266521b710de # v3.1.2
         with:
+          builder: ${{ steps.setup-buildx.outputs.name }}
           cache-map: |
             {
               "var-cache-apk": "/var/cache/apk",
