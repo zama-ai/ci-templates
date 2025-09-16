@@ -175,12 +175,12 @@ jobs:
           path: |
             var-cache-apk
             var-lib-apk
-            usr-local-cargo-registry
-            usr-local-cargo-git
-            usr-local-cargo-bin
-            usr-local-cargo-registry-index
-            usr-local-cargo-registry-cache
-            usr-local-cargo-git-db
+            root-cargo-registry
+            root-cargo-git
+            root-cargo-bin
+            root-cargo-registry-index
+            root-cargo-registry-cache
+            root-cargo-git-db
             app-${{ inputs.app-cache-dir }}-target
             ~/.cargo/bin/
             ~/.cargo/registry/index/
@@ -197,12 +197,12 @@ jobs:
             {
               "var-cache-apk": "/var/cache/apk",
               "var-lib-apk": "/var/lib/apk",
-              "usr-local-cargo-registry": "/usr/local/cargo/registry",
-              "usr-local-cargo-git": "/usr/local/cargo/git",
-              "usr-local-cargo-bin": "/usr/local/cargo/bin",
-              "usr-local-cargo-registry-index": "/usr/local/cargo/registry/index",
-              "usr-local-cargo-registry-cache": "/usr/local/cargo/registry/cache",
-              "usr-local-cargo-git-db": "/usr/local/cargo/git/db",
+              "root-cargo-registry": "/root/.cargo/registry",
+              "root-cargo-git": "/root/.cargo/git",
+              "root-cargo-bin": "/root/.cargo/bin",
+              "root-cargo-registry-index": "/root/.cargo/registry/index",
+              "root-cargo-registry-cache": "/root/.cargo/registry/cache",
+              "root-cargo-git-db": "/root/.cargo/git/db",
               "app-${{ inputs.app-cache-dir }}-target": "/app/${{ inputs.app-cache-dir }}/target"
             }
           skip-extraction: ${{ steps.cache.outputs.cache-hit }}
@@ -243,6 +243,7 @@ jobs:
           build-args: |
             RUST_IMAGE_VERSION=${{ env.RUST_IMAGE_VERSION }}
             TARGETARCH=${{ matrix.platform-tag }}
+            APP_CACHE_DIR=${{ inputs.app-cache-dir }}
           context: ${{ inputs.docker-context }}
           secrets: BLOCKCHAIN_ACTIONS_TOKEN=${{ secrets.BLOCKCHAIN_ACTIONS_TOKEN }}
           file: ${{ inputs.docker-file }}
