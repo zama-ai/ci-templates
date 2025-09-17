@@ -208,7 +208,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: ${{ inputs.push_image }}
           pull: false
-          provenance: true
+          provenance: mode=max
           sbom: true
           target: ${{ matrix.docker-target }}
           labels: ${{ steps.meta.outputs.labels }}
