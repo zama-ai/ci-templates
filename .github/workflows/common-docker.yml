@@ -154,60 +154,12 @@ jobs:
         with:
           platforms: ${{ matrix.platform }}
 
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502 # v4.0.2
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_S3_USER }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY_S3_USER }}
           aws-region: eu-west-3
-
-      ############################################################################
-      # Setup cache for dockerfile and inject in docker
-      #
-      - name: Setup Cache
-        uses: runs-on/cache@197b09d6da1bf42f673fee18769c794b789a0c7d # v4
-        id: cache
-        env:
-          RUNS_ON_S3_BUCKET_CACHE: gh-actions-cache-eu-west-3
-          RUNS_ON_AWS_REGION: eu-west-3
-        with:
-          path: |
-            var-cache-apk
-            var-lib-apk
-            usr-local-cargo-registry
-            usr-local-cargo-git
-            usr-local-cargo-bin
-            usr-local-cargo-registry-index
-            usr-local-cargo-registry-cache
-            usr-local-cargo-git-db
-            app-${{ inputs.app-cache-dir }}-target
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-            /sccache
-          key: |
-            ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: inject cache into docker
-        uses: reproducible-containers/buildkit-cache-dance@5b6db76d1da5c8b307d5d2e0706d266521b710de # v3.1.2
-        with:
-          cache-map: |
-            {
-              "var-cache-apk": "/var/cache/apk",
-              "var-lib-apk": "/var/lib/apk",
-              "usr-local-cargo-registry": "/usr/local/cargo/registry",
-              "usr-local-cargo-git": "/usr/local/cargo/git",
-              "usr-local-cargo-bin": "/usr/local/cargo/bin",
-              "usr-local-cargo-registry-index": "/usr/local/cargo/registry/index",
-              "usr-local-cargo-registry-cache": "/usr/local/cargo/registry/cache",
-              "usr-local-cargo-git-db": "/usr/local/cargo/git/db",
-              "app-${{ inputs.app-cache-dir }}-target": "/app/${{ inputs.app-cache-dir }}/target",
-              "sccache": "/sccache"
-            }
-          skip-extraction: ${{ steps.cache.outputs.cache-hit }}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
@@ -245,6 +197,7 @@ jobs:
           build-args: |
             RUST_IMAGE_VERSION=${{ env.RUST_IMAGE_VERSION }}
             TARGETARCH=${{ matrix.platform-tag }}
+            APP_CACHE_DIR=${{ inputs.app-cache-dir }}
           context: ${{ inputs.docker-context }}
           secrets: BLOCKCHAIN_ACTIONS_TOKEN=${{ secrets.BLOCKCHAIN_ACTIONS_TOKEN }}
           file: ${{ inputs.docker-file }}
@@ -257,8 +210,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           tags: |
             ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}
-          cache-from: type=s3,blobs_prefix=cache/${{ github.repository }}/,manifests_prefix=cache/${{ github.repository }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }}
-          cache-to: type=s3,blobs_prefix=cache/${{ github.repository }}/,manifests_prefix=cache/${{ github.repository }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }},mode=max
+          cache-from: type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }}
+          cache-to: type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }},mode=max
 
       - name: Export image and digest
         id: export-image-and-digest
@@ -308,7 +261,6 @@ jobs:
       private-repository: true
     secrets:
       registry-password: ${{ secrets.GITHUB_TOKEN }}
-
 
   create-manifest:
     permissions:
