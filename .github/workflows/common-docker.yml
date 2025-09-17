@@ -112,10 +112,14 @@ jobs:
     outputs:
       image: ${{ steps.push.outputs.image }}
       digest: ${{ steps.push.outputs.digest }}
-      image-amd64-prod: ${{ steps.export-image-and-digest.outputs.image-amd64-prod }}
-      digest-amd64-prod: ${{ steps.export-image-and-digest.outputs.digest-amd64-prod }}
-      image-arm64-prod: ${{ steps.export-image-and-digest.outputs.image-arm64-prod }}
-      digest-arm64-prod: ${{ steps.export-image-and-digest.outputs.digest-arm64-prod }}
+      image-amd64-prod: ${{ steps.export-image-and-digest-prod.outputs.image-amd64-prod }}
+      digest-amd64-prod: ${{ steps.export-image-and-digest-prod.outputs.digest-amd64-prod }}
+      image-arm64-prod: ${{ steps.export-image-and-digest-prod.outputs.image-arm64-prod }}
+      digest-arm64-prod: ${{ steps.export-image-and-digest-prod.outputs.digest-arm64-prod }}
+      image-amd64-dev: ${{ steps.export-image-and-digest-dev.outputs.image-amd64-dev }}
+      digest-amd64-dev: ${{ steps.export-image-and-digest-dev.outputs.digest-amd64-dev }}
+      image-arm64-dev: ${{ steps.export-image-and-digest-dev.outputs.image-arm64-dev }}
+      digest-arm64-dev: ${{ steps.export-image-and-digest-dev.outputs.digest-arm64-dev }}
     strategy:
       matrix:
         include:
@@ -204,8 +208,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: ${{ inputs.push_image }}
           pull: false
-          provenance: false
-          sbom: false
+          provenance: true
+          sbom: true
           target: ${{ matrix.docker-target }}
           labels: ${{ steps.meta.outputs.labels }}
           tags: |
@@ -213,8 +217,8 @@ jobs:
           cache-from: type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }}
           cache-to: type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }},mode=max
 
-      - name: Export image and digest
-        id: export-image-and-digest
+      - name: Export image and digest for prod
+        id: export-image-and-digest-prod
         if: matrix.docker-target == 'prod'
         run: |
           if ${{ matrix.platform-tag == 'amd64' }}
@@ -228,39 +232,54 @@ jobs:
             echo "digest-arm64-prod=${{ steps.push.outputs.digest }}" >> $GITHUB_OUTPUT
           fi
 
-  provenance-amd64-prod:
-    permissions:
-      actions: 'read'
-      attestations: 'write'
-      packages: 'write'
-      id-token: write
-    needs: [build-and-push-docker]
-    if: github.event_name == 'release'
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
-    with:
-      image: ghcr.io/zama-ai/${{ inputs.image-name }}
-      digest: ${{ needs.build-and-push-docker.outputs.digest-amd64-prod }}
-      registry-username: ${{ github.actor }}
-      private-repository: true
-    secrets:
-      registry-password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Export image and digest for dev
+        id: export-image-and-digest-dev
+        if: matrix.docker-target == 'dev'
+        run: |
+          if ${{ matrix.platform-tag == 'amd64' }}
+          then
+            echo "image-amd64-dev=${{ steps.push.outputs.image }}" >> $GITHUB_OUTPUT
+            echo "digest-amd64-dev=${{ steps.push.outputs.digest }}" >> $GITHUB_OUTPUT
+          fi
+          if ${{ matrix.platform-tag == 'arm64' }}
+          then
+            echo "image-arm64-dev=${{ steps.push.outputs.image }}" >> $GITHUB_OUTPUT
+            echo "digest-arm64-dev=${{ steps.push.outputs.digest }}" >> $GITHUB_OUTPUT
+          fi
 
-  provenance-arm64-prod:
-    permissions:
-      actions: 'read'
-      attestations: 'write'
-      packages: 'write'
-      id-token: write
-    needs: [build-and-push-docker]
-    if: github.event_name == 'release'
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
-    with:
-      image: ghcr.io/zama-ai/${{ inputs.image-name }}
-      digest: ${{ needs.build-and-push-docker.outputs.digest-arm64-prod }}
-      registry-username: ${{ github.actor }}
-      private-repository: true
-    secrets:
-      registry-password: ${{ secrets.GITHUB_TOKEN }}
+  # provenance-amd64-prod:
+  #   permissions:
+  #     actions: 'read'
+  #     attestations: 'write'
+  #     packages: 'write'
+  #     id-token: write
+  #   needs: [build-and-push-docker]
+  #   if: github.event_name == 'release'
+  #   uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
+  #   with:
+  #     image: ghcr.io/zama-ai/${{ inputs.image-name }}
+  #     digest: ${{ needs.build-and-push-docker.outputs.digest-amd64-prod }}
+  #     registry-username: ${{ github.actor }}
+  #     private-repository: true
+  #   secrets:
+  #     registry-password: ${{ secrets.GITHUB_TOKEN }}
+
+  # provenance-arm64-prod:
+  #   permissions:
+  #     actions: 'read'
+  #     attestations: 'write'
+  #     packages: 'write'
+  #     id-token: write
+  #   needs: [build-and-push-docker]
+  #   if: github.event_name == 'release'
+  #   uses: slsa-framework/slsa-github-generator/.github/workflows/generator_container_slsa3.yml@v2.1.0
+  #   with:
+  #     image: ghcr.io/zama-ai/${{ inputs.image-name }}
+  #     digest: ${{ needs.build-and-push-docker.outputs.digest-arm64-prod }}
+  #     registry-username: ${{ github.actor }}
+  #     private-repository: true
+  #   secrets:
+  #     registry-password: ${{ secrets.GITHUB_TOKEN }}
 
   create-manifest:
     permissions:
@@ -285,37 +304,72 @@ jobs:
       - name: Create and Push Multiarch Manifest
         run: |
           if [ "${{ matrix.docker-target }}" = "prod" ]; then
-            docker manifest create \
-              ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }} \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
+            docker buildx imagetools create \
+              -t ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }} \
+              ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.build-and-push-docker.outputs.digest-amd64-prod }} \
+              ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.build-and-push-docker.outputs.digest-arm64-prod }}
 
-            docker manifest create \
-              ghcr.io/zama-ai/${{ inputs.image-name }}:latest \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
+            docker buildx imagetools create \
+              -t ghcr.io/zama-ai/${{ inputs.image-name }}:latest \
+              ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.build-and-push-docker.outputs.digest-amd64-prod }} \
+              ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.build-and-push-docker.outputs.digest-arm64-prod }}
 
             docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}
-            if [ "${{ github.event_name }}" = "release" ]; then
-              docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest
-            fi
+              if [ "${{ github.event_name }}" = "release" ]; then
+                docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest
+              fi
 
           else
-            docker manifest create \
-              ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.docker-target }} \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
+            docker buildx imagetools create \
+              -t ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.docker-target }} \
+              ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.build-and-push-docker.outputs.digest-amd64-dev }} \
+              ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.build-and-push-docker.outputs.digest-arm64-dev }}
 
-            docker manifest create \
-              ghcr.io/zama-ai/${{ inputs.image-name }}:latest-${{ matrix.docker-target }} \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
+            docker buildx imagetools create \
+              -t ghcr.io/zama-ai/${{ inputs.image-name }}:latest-${{ matrix.docker-target }} \
+              ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.build-and-push-docker.outputs.digest-amd64-dev }} \
+              ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.build-and-push-docker.outputs.digest-arm64-dev }}
 
             docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.docker-target }}
             if [ "${{ github.event_name }}" = "release" ]; then
               docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest-${{ matrix.docker-target }}
             fi
           fi
+
+      # - name: Create and Push Multiarch Manifest
+      #   run: |
+      #     if [ "${{ matrix.docker-target }}" = "prod" ]; then
+      #       docker manifest create \
+      #         ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }} \
+      #         --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
+      #         --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
+
+      #       docker manifest create \
+      #         ghcr.io/zama-ai/${{ inputs.image-name }}:latest \
+      #         --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
+      #         --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
+
+      #       docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}
+      #       if [ "${{ github.event_name }}" = "release" ]; then
+      #         docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest
+      #       fi
+
+      #     else
+      #       docker manifest create \
+      #         ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.docker-target }} \
+      #         --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
+      #         --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
+
+      #       docker manifest create \
+      #         ghcr.io/zama-ai/${{ inputs.image-name }}:latest-${{ matrix.docker-target }} \
+      #         --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
+      #         --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
+
+      #       docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.docker-target }}
+      #       if [ "${{ github.event_name }}" = "release" ]; then
+      #         docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest-${{ matrix.docker-target }}
+      #       fi
+      #     fi
 
       - name: Export image name
         id: export-image
