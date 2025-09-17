@@ -309,14 +309,11 @@ jobs:
               ghcr.io/zama-ai/${{ inputs.image-name }}@${{ needs.build-and-push-docker.outputs.digest-amd64-prod }} \
               ghcr.io/zama-ai/${{ inputs.image-name }}@${{ needs.build-and-push-docker.outputs.digest-arm64-prod }}
 
-            docker buildx imagetools create \
-              -t ghcr.io/zama-ai/${{ inputs.image-name }}:latest \
-              ghcr.io/zama-ai/${{ inputs.image-name }}@${{ needs.build-and-push-docker.outputs.digest-amd64-prod }} \
-              ghcr.io/zama-ai/${{ inputs.image-name }}@${{ needs.build-and-push-docker.outputs.digest-arm64-prod }}
-
-            docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}
-              if [ "${{ github.event_name }}" = "release" ]; then
-                docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest
+            if [ "${{ github.event_name }}" = "release" ]; then
+              docker buildx imagetools create \
+                -t ghcr.io/zama-ai/${{ inputs.image-name }}:latest \
+                ghcr.io/zama-ai/${{ inputs.image-name }}@${{ needs.build-and-push-docker.outputs.digest-amd64-prod }} \
+                ghcr.io/zama-ai/${{ inputs.image-name }}@${{ needs.build-and-push-docker.outputs.digest-arm64-prod }}
               fi
 
           else
@@ -325,14 +322,11 @@ jobs:
               ghcr.io/zama-ai/${{ inputs.image-name }}@${{ needs.build-and-push-docker.outputs.digest-amd64-dev }} \
               ghcr.io/zama-ai/${{ inputs.image-name }}@${{ needs.build-and-push-docker.outputs.digest-arm64-dev }}
 
-            docker buildx imagetools create \
-              -t ghcr.io/zama-ai/${{ inputs.image-name }}:latest-${{ matrix.docker-target }} \
-              ghcr.io/zama-ai/${{ inputs.image-name }}@${{ needs.build-and-push-docker.outputs.digest-amd64-dev }} \
-              ghcr.io/zama-ai/${{ inputs.image-name }}@${{ needs.build-and-push-docker.outputs.digest-arm64-dev }}
-
-            docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.docker-target }}
             if [ "${{ github.event_name }}" = "release" ]; then
-              docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest-${{ matrix.docker-target }}
+              docker buildx imagetools create \
+                -t ghcr.io/zama-ai/${{ inputs.image-name }}:latest-${{ matrix.docker-target }} \
+                ghcr.io/zama-ai/${{ inputs.image-name }}@${{ needs.build-and-push-docker.outputs.digest-amd64-dev }} \
+                ghcr.io/zama-ai/${{ inputs.image-name }}@${{ needs.build-and-push-docker.outputs.digest-arm64-dev }}
             fi
           fi
 
