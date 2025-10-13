@@ -123,18 +123,22 @@ jobs:
             runs-on: ${{ inputs.runs-on-amd }}
             platform-tag: amd64
             docker-target: prod
+            build-image-tag: ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}
           - platform: linux/arm64
             runs-on: ${{ inputs.runs-on-arm }}
             platform-tag: arm64
             docker-target: prod
+            build-image-tag: ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-prod
           - platform: linux/amd64
             runs-on: ${{ inputs.runs-on-amd }}
             platform-tag: amd64
             docker-target: dev
+            build-image-tag: ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-dev
           - platform: linux/arm64
             runs-on: ${{ inputs.runs-on-arm }}
             platform-tag: arm64
             docker-target: dev
+            build-image-tag: ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-dev
     runs-on: ${{ matrix.runs-on }}
     steps:
       - name: Checkout Project
@@ -209,7 +213,7 @@ jobs:
           target: ${{ matrix.docker-target }}
           labels: ${{ steps.meta.outputs.labels }}
           tags: |
-            ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}
+            ${{ matrix.build-image-tag }}
           cache-from: type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }}
           cache-to: type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }},mode=max
 
@@ -285,18 +289,13 @@ jobs:
       - name: Create and Push Multiarch Manifest
         run: |
           if [ "${{ matrix.docker-target }}" = "prod" ]; then
-
-            docker pull ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }}
-            docker image tag \
-                      ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
-                      ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}
-            docker image push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}
+            docker manifest create \
+              ghcr.io/zama-ai/${{ inputs.image-name }}:latest \
+              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }} \
+              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
 
             if [ "${{ github.event_name }}" = "release" ]; then
-            docker image tag \
-                      ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
-                      ghcr.io/zama-ai/${{ inputs.image-name }}:latest
-              docker image push ghcr.io/zama-ai/${{ inputs.image-name }}:latest
+              docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest
             fi
 
           else
