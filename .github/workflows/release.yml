@@ -18,6 +18,7 @@ jobs:
         uses: codfish/semantic-release-action@6c65402abb31a48c3f7396d7d099da015be67c2b # v4.0.1
         with:
           branches: main
+          additional-packages: ['@semantic-release/changelog']
           plugins: |
            [
             '@semantic-release/commit-analyzer',
