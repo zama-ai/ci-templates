@@ -18,12 +18,14 @@ jobs:
         uses: codfish/semantic-release-action@6c65402abb31a48c3f7396d7d099da015be67c2b # v4.0.1
         with:
           branches: main
-          additional_packages: |
-            [
-              '@semantic-release/github',
-              '@semantic-release/git',
-              '@semantic-release/changelog',
-            ]
+          plugins: |
+           [
+            '@semantic-release/commit-analyzer',
+            '@semantic-release/release-notes-generator',
+            '@semantic-release/changelog',
+            '@semantic-release/github',
+            '@semantic-release/git'
+           ]
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN}}
           GIT_AUTHOR_NAME: 'zama-bot'
