@@ -11,11 +11,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-depth: 0
       - name: Release
-        uses: codfish/semantic-release-action@da160b1641c06934ddd00715c6594be85acb5fce
+        uses: codfish/semantic-release-action@6c65402abb31a48c3f7396d7d099da015be67c2b # v4.0.1
         with:
           branches: main
           additional_packages: |
@@ -26,3 +26,6 @@ jobs:
             ]
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN}}
+          GIT_AUTHOR_NAME: 'zama-bot'
+          GIT_COMMITTER_NAME: 'zama-bot'
+          GIT_COMMITTER_EMAIL: 'zama-bot@zama.ai'
