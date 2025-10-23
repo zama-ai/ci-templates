@@ -1,0 +1,28 @@
+name: Automatic Release
+on:
+  push:
+    branches:
+      - main
+permissions:
+  contents: write
+jobs:
+  prepare:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@ac593985615ec2ede58e132d2e21d2b1cbd6127c
+        with:
+          fetch-depth: 0
+      - name: Release
+        uses: codfish/semantic-release-action@da160b1641c06934ddd00715c6594be85acb5fce
+        with:
+          branches: main
+          additional_packages: |
+            [
+              '@semantic-release/github',
+              '@semantic-release/git',
+              '@semantic-release/changelog',
+            ]
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
