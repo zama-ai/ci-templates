@@ -32,7 +32,8 @@ jobs:
             '@semantic-release/git'
            ]
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN}}
+          GITHUB_TOKEN: ${{ secrets.ZAMA_BOT_TOKEN}}
           GIT_AUTHOR_NAME: 'zama-bot'
+          GIT_AUTHOR_EMAIL: 'zama-bot@zama.ai'
           GIT_COMMITTER_NAME: 'zama-bot'
           GIT_COMMITTER_EMAIL: 'zama-bot@zama.ai'
