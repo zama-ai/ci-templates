@@ -5,6 +5,7 @@ on:
       - main
 permissions:
   contents: write
+  actions: write
 jobs:
   prepare:
     name: Release
