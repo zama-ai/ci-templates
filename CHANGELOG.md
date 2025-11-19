@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/zama-ai/ci-templates/compare/v1.0.0...v1.0.1) (2025-11-19)
+
+
+### Bug Fixes
+
+* fix buildkit version ([#21](https://github.com/zama-ai/ci-templates/issues/21)) ([034bb9a](https://github.com/zama-ai/ci-templates/commit/034bb9a813dbb8d294840527f1f7e349a850099c))
+
 # 1.0.0 (2025-10-23)
 
 
