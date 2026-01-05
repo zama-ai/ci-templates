@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/zama-ai/ci-templates/compare/v1.0.2...v1.0.3) (2026-01-05)
+
+
+### Bug Fixes
+
+* make rust version optional for docker build ([#25](https://github.com/zama-ai/ci-templates/issues/25)) ([c6b6d35](https://github.com/zama-ai/ci-templates/commit/c6b6d35dfd0d28918b0942b09b4cf2f5854b3ee4))
+
 ## [1.0.1](https://github.com/zama-ai/ci-templates/compare/v1.0.0...v1.0.1) (2025-11-19)
 
 
