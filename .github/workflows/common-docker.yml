@@ -206,6 +206,10 @@ jobs:
         env:
           RUNS_ON_S3_BUCKET_CACHE: gh-actions-cache-eu-west-3
           RUNS_ON_AWS_REGION: eu-west-3
+          # Disable build record artifact upload in post-job cleanup.
+          # Some runners return non-JSON artifact API responses, which makes
+          # the action fail after the build has already succeeded.
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
         with:
           build-args: |
             RUST_IMAGE_VERSION=${{ env.RUST_IMAGE_VERSION }}
@@ -256,7 +260,7 @@ jobs:
     runs-on: ${{ inputs.runs-on-amd }}
     steps:
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
