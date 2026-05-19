@@ -175,11 +175,14 @@ jobs:
           aws-region: eu-west-3
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        uses: ./.github/actions/retry
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          command: |
+            echo "Logging into ghcr.io..."
+            echo "$GHCR_PASSWORD" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 
       - name: Login to Chainguard Container Registry
         uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
@@ -260,46 +263,51 @@ jobs:
     runs-on: ${{ inputs.runs-on-amd }}
     steps:
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        uses: ./.github/actions/retry
+        env:
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          command: |
+            echo "Logging into ghcr.io..."
+            echo "$GHCR_PASSWORD" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 
       - name: Create and Push Multiarch Manifest
-        run: |
-          if [ "${{ matrix.docker-target }}" = "prod" ]; then
-            docker manifest create \
-              ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }} \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
+        uses: ./.github/actions/retry
+        with:
+          command: |
+            if [ "${{ matrix.docker-target }}" = "prod" ]; then
+              docker manifest create \
+                ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }} \
+                --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
+                --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
 
-            docker manifest create \
-              ghcr.io/zama-ai/${{ inputs.image-name }}:latest \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
+              docker manifest create \
+                ghcr.io/zama-ai/${{ inputs.image-name }}:latest \
+                --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
+                --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
 
-            docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}
-            if [ "${{ github.event_name }}" = "release" ]; then
-              docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest
+              docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}
+              if [ "${{ github.event_name }}" = "release" ]; then
+                docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest
+              fi
+
+            else
+              docker manifest create \
+                ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.docker-target }} \
+                --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
+                --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
+
+              docker manifest create \
+                ghcr.io/zama-ai/${{ inputs.image-name }}:latest-${{ matrix.docker-target }} \
+                --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
+                --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
+
+              docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.docker-target }}
+              if [ "${{ github.event_name }}" = "release" ]; then
+                docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest-${{ matrix.docker-target }}
+              fi
             fi
-
-          else
-            docker manifest create \
-              ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.docker-target }} \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
-
-            docker manifest create \
-              ghcr.io/zama-ai/${{ inputs.image-name }}:latest-${{ matrix.docker-target }} \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
-
-            docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.docker-target }}
-            if [ "${{ github.event_name }}" = "release" ]; then
-              docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest-${{ matrix.docker-target }}
-            fi
-          fi
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0

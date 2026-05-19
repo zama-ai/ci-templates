@@ -1,0 +1,33 @@
+name: retry
+description: Run a bash command with exponential-backoff retry on failure.
+inputs:
+  command:
+    description: Bash command to execute. Pass untrusted values via step `env:` and reference them as `$VAR`.
+    required: true
+  max-attempts:
+    description: Maximum number of attempts.
+    default: '5'
+  initial-backoff-seconds:
+    description: Initial backoff in seconds; doubles after each failed attempt.
+    default: '2'
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        RETRY_COMMAND: ${{ inputs.command }}
+        RETRY_MAX_ATTEMPTS: ${{ inputs.max-attempts }}
+        RETRY_INITIAL_BACKOFF: ${{ inputs.initial-backoff-seconds }}
+      run: |
+        for attempt in $(seq 1 "$RETRY_MAX_ATTEMPTS"); do
+          if bash -c "$RETRY_COMMAND"; then
+            exit 0
+          fi
+          if [ "$attempt" -eq "$RETRY_MAX_ATTEMPTS" ]; then
+            echo "command failed after ${RETRY_MAX_ATTEMPTS} attempts" >&2
+            exit 1
+          fi
+          backoff=$((RETRY_INITIAL_BACKOFF * (2 ** (attempt - 1))))
+          echo "attempt ${attempt} failed; retrying in ${backoff}s..." >&2
+          sleep "$backoff"
+        done
