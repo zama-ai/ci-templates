@@ -1,3 +1,10 @@
+## [1.0.8](https://github.com/zama-ai/ci-templates/compare/v1.0.7...v1.0.8) (2026-05-26)
+
+
+### Bug Fixes
+
+* **ci:** propagate exit code 1 in case of error ([#30](https://github.com/zama-ai/ci-templates/issues/30)) ([ea89ace](https://github.com/zama-ai/ci-templates/commit/ea89ace2e42ce8dd4a70cd4d9153cb004e887925))
+
 ## [1.0.3](https://github.com/zama-ai/ci-templates/compare/v1.0.2...v1.0.3) (2026-01-05)
 
 
