@@ -175,7 +175,7 @@ jobs:
           aws-region: eu-west-3
 
       - name: Login to GitHub Container Registry
-        uses: zama-ai/ci-templates/.github/actions/retry@f3b6046d0ce6f2eab83353e0fb788bd781be9f2e # v1.0.6
+        uses: zama-ai/ci-templates/.github/actions/retry@386b427a48c105df7615cc03ad0e3330cedc05d8 # v1.0.8
         env:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
@@ -263,7 +263,7 @@ jobs:
     runs-on: ${{ inputs.runs-on-amd }}
     steps:
       - name: Login to GitHub Container Registry
-        uses: zama-ai/ci-templates/.github/actions/retry@f3b6046d0ce6f2eab83353e0fb788bd781be9f2e # v1.0.6
+        uses: zama-ai/ci-templates/.github/actions/retry@386b427a48c105df7615cc03ad0e3330cedc05d8 # v1.0.8
         env:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
@@ -273,7 +273,7 @@ jobs:
             echo "$GHCR_PASSWORD" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 
       - name: Create and Push Multiarch Manifest
-        uses: zama-ai/ci-templates/.github/actions/retry@f3b6046d0ce6f2eab83353e0fb788bd781be9f2e # v1.0.6
+        uses: zama-ai/ci-templates/.github/actions/retry@386b427a48c105df7615cc03ad0e3330cedc05d8 # v1.0.8
         with:
           command: |
             if [ "${{ matrix.docker-target }}" = "prod" ]; then
