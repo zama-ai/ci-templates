@@ -20,7 +20,7 @@ runs:
         RETRY_INITIAL_BACKOFF: ${{ inputs.initial-backoff-seconds }}
       run: |
         for attempt in $(seq 1 "$RETRY_MAX_ATTEMPTS"); do
-          if bash -c "$RETRY_COMMAND"; then
+          if bash -eo pipefail -c "$RETRY_COMMAND"; then
             exit 0
           fi
           if [ "$attempt" -eq "$RETRY_MAX_ATTEMPTS" ]; then
