@@ -241,8 +241,20 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           tags: |
             ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}
-          cache-from: type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }}
-          cache-to: type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }},mode=max
+          # BuildKit layer cache, scoped per-branch with `main` as a fallback baseline.
+          # - cache-from: read from this branch's prefix first, then fall back to `main`.
+          #   On the first build of a feature branch the per-branch prefix is empty,
+          #   so we still benefit from `main`'s warm layers. Subsequent builds on the
+          #   same branch hit their own prefix and avoid clobbering other PRs.
+          # - cache-to: write only to the current branch's prefix to prevent concurrent
+          #   PRs from overwriting each other's manifests. When the current branch IS
+          #   `main`, this naturally writes to `main`, keeping the shared baseline fresh.
+          # Pair this with an S3 lifecycle policy that expires per-branch prefixes after
+          # ~14 days of inactivity so cache storage doesn't grow unboundedly.
+          cache-from: |
+            type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/${{ github.head_ref || github.ref_name }}/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/${{ github.head_ref || github.ref_name }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }}
+            type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/main/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/main/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }}
+          cache-to: type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/${{ github.head_ref || github.ref_name }}/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/${{ github.head_ref || github.ref_name }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }},mode=max
 
       - name: Export image and digest
         id: export-image-and-digest
