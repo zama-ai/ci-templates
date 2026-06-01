@@ -224,8 +224,8 @@ jobs:
           context: ${{ inputs.docker-context }}
           secrets: |
             BLOCKCHAIN_ACTIONS_TOKEN=${{ secrets.BLOCKCHAIN_ACTIONS_TOKEN }}
-            SCCACHE_AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_S3_USER }}
-            SCCACHE_AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_KEY_S3_USER }}
+            sccache_aws_access_key_id=${{ secrets.AWS_ACCESS_KEY_S3_USER }}
+            sccache_aws_secret_access_key=${{ secrets.AWS_SECRET_KEY_S3_USER }}
           file: ${{ inputs.docker-file }}
           platforms: ${{ matrix.platform }}
           push: ${{ inputs.push_image }}
