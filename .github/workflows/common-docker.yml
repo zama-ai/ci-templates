@@ -133,18 +133,18 @@ jobs:
             runs-on: ${{ inputs.runs-on-amd }}
             platform-tag: amd64
             docker-target: prod
-          - platform: linux/arm64
-            runs-on: ${{ inputs.runs-on-arm }}
-            platform-tag: arm64
-            docker-target: prod
-          - platform: linux/amd64
-            runs-on: ${{ inputs.runs-on-amd }}
-            platform-tag: amd64
-            docker-target: dev
-          - platform: linux/arm64
-            runs-on: ${{ inputs.runs-on-arm }}
-            platform-tag: arm64
-            docker-target: dev
+          # - platform: linux/arm64
+          #   runs-on: ${{ inputs.runs-on-arm }}
+          #   platform-tag: arm64
+          #   docker-target: prod
+          # - platform: linux/amd64
+          #   runs-on: ${{ inputs.runs-on-amd }}
+          #   platform-tag: amd64
+          #   docker-target: dev
+          # - platform: linux/arm64
+          #   runs-on: ${{ inputs.runs-on-arm }}
+          #   platform-tag: arm64
+          #   docker-target: dev
     runs-on: ${{ matrix.runs-on }}
     steps:
       - name: Checkout Project
@@ -282,7 +282,7 @@ jobs:
     if: inputs.push_image
     strategy:
       matrix:
-        docker-target: ["prod", "dev"]
+        docker-target: ["prod"]
     runs-on: ${{ inputs.runs-on-amd }}
     steps:
       - name: Login to GitHub Container Registry
