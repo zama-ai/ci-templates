@@ -44,10 +44,6 @@ on:
         type: string
         required: false
         default: "ubuntu-latest"
-      runs-on-arm:
-        type: string
-        required: false
-        default: "large_ubuntu_16_arm"
       docker-file:
         type: string
         default: "Dockerfile"
@@ -124,8 +120,6 @@ jobs:
       digest: ${{ steps.push.outputs.digest }}
       image-amd64-prod: ${{ steps.export-image-and-digest.outputs.image-amd64-prod }}
       digest-amd64-prod: ${{ steps.export-image-and-digest.outputs.digest-amd64-prod }}
-      image-arm64-prod: ${{ steps.export-image-and-digest.outputs.image-arm64-prod }}
-      digest-arm64-prod: ${{ steps.export-image-and-digest.outputs.digest-arm64-prod }}
     strategy:
       matrix:
         include:
@@ -133,18 +127,6 @@ jobs:
             runs-on: ${{ inputs.runs-on-amd }}
             platform-tag: amd64
             docker-target: prod
-          # - platform: linux/arm64
-          #   runs-on: ${{ inputs.runs-on-arm }}
-          #   platform-tag: arm64
-          #   docker-target: prod
-          # - platform: linux/amd64
-          #   runs-on: ${{ inputs.runs-on-amd }}
-          #   platform-tag: amd64
-          #   docker-target: dev
-          # - platform: linux/arm64
-          #   runs-on: ${{ inputs.runs-on-arm }}
-          #   platform-tag: arm64
-          #   docker-target: dev
     runs-on: ${{ matrix.runs-on }}
     steps:
       - name: Checkout Project
@@ -260,16 +242,8 @@ jobs:
         id: export-image-and-digest
         if: matrix.docker-target == 'prod'
         run: |
-          if ${{ matrix.platform-tag == 'amd64' }}
-          then
-            echo "image-amd64-prod=${{ steps.push.outputs.image }}" >> $GITHUB_OUTPUT
-            echo "digest-amd64-prod=${{ steps.push.outputs.digest }}" >> $GITHUB_OUTPUT
-          fi
-          if ${{ matrix.platform-tag == 'arm64' }}
-          then
-            echo "image-arm64-prod=${{ steps.push.outputs.image }}" >> $GITHUB_OUTPUT
-            echo "digest-arm64-prod=${{ steps.push.outputs.digest }}" >> $GITHUB_OUTPUT
-          fi
+          echo "image-amd64-prod=${{ steps.push.outputs.image }}" >> $GITHUB_OUTPUT
+          echo "digest-amd64-prod=${{ steps.push.outputs.digest }}" >> $GITHUB_OUTPUT
 
   create-manifest:
     permissions:
@@ -280,9 +254,6 @@ jobs:
     outputs:
       image_name: ${{ steps.export-image.outputs.image-prod-with-tag }}
     if: inputs.push_image
-    strategy:
-      matrix:
-        docker-target: ["prod"]
     runs-on: ${{ inputs.runs-on-amd }}
     steps:
       - name: Login to GitHub Container Registry
@@ -299,37 +270,17 @@ jobs:
         uses: zama-ai/ci-templates/.github/actions/retry@386b427a48c105df7615cc03ad0e3330cedc05d8 # v1.0.8
         with:
           command: |
-            if [ "${{ matrix.docker-target }}" = "prod" ]; then
-              docker manifest create \
-                ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }} \
-                --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
-                --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
+            docker manifest create \
+              ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }} \
+              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-prod
 
-              docker manifest create \
-                ghcr.io/zama-ai/${{ inputs.image-name }}:latest \
-                --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
-                --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
+            docker manifest create \
+              ghcr.io/zama-ai/${{ inputs.image-name }}:latest \
+              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-prod
 
-              docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}
-              if [ "${{ github.event_name }}" = "release" ]; then
-                docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest
-              fi
-
-            else
-              docker manifest create \
-                ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.docker-target }} \
-                --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
-                --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
-
-              docker manifest create \
-                ghcr.io/zama-ai/${{ inputs.image-name }}:latest-${{ matrix.docker-target }} \
-                --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-${{ matrix.docker-target }} \
-                --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-${{ matrix.docker-target }}
-
-              docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.docker-target }}
-              if [ "${{ github.event_name }}" = "release" ]; then
-                docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest-${{ matrix.docker-target }}
-              fi
+            docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}
+            if [ "${{ github.event_name }}" = "release" ]; then
+              docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:latest
             fi
 
       - name: Install Cosign
@@ -339,41 +290,23 @@ jobs:
       - name: Sign image with Cosign
         if: github.event_name == 'release'
         run: |
-          if [ "${{ matrix.docker-target }}" = "prod" ]; then
-            docker pull ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}
-            IMAGE_WITH_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }})
-            cosign sign --yes --recursive=true $IMAGE_WITH_DIGEST
-          fi
+          docker pull ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}
+          IMAGE_WITH_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }})
+          cosign sign --yes --recursive=true $IMAGE_WITH_DIGEST
 
       - name: Export image name
         id: export-image
         run: |
-          if [ "${{ matrix.docker-target }}" = "prod" ]; then
-            {
-              echo "image-${{ matrix.docker-target }}-with-tag=ghcr.io/zama-ai/${{inputs.image-name}}:${{ needs.determine-tag.outputs.docker_tag }}"
-            } >> "${GITHUB_OUTPUT}"
+          {
+            echo "image-prod-with-tag=ghcr.io/zama-ai/${{inputs.image-name}}:${{ needs.determine-tag.outputs.docker_tag }}"
+          } >> "${GITHUB_OUTPUT}"
           if [ "${{ github.event_name }}" = "release" ]; then
             {
-              echo "image-${{ matrix.docker-target }}-latest=ghcr.io/zama-ai/${{inputs.image-name}}:latest"
+              echo "image-prod-latest=ghcr.io/zama-ai/${{inputs.image-name}}:latest"
             } >> "${GITHUB_OUTPUT}"
-          fi
-          else
-            {
-              echo "image-${{ matrix.docker-target }}-with-tag=ghcr.io/zama-ai/${{inputs.image-name}}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.docker-target }}"
-            } >> "${GITHUB_OUTPUT}"
-            if [ "${{ github.event_name }}" = "release" ]; then
-              {
-                echo "image-${{ matrix.docker-target }}-latest=ghcr.io/zama-ai/${{inputs.image-name}}:latest-${{ matrix.docker-target }}"
-              } >> "${GITHUB_OUTPUT}"
-            fi
           fi
 
       - name: Add image name to job summary
         run: |
           echo "## Docker Images Published ✅" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${{ matrix.docker-target }}" = "prod" ]; then
-            echo "**Image Name (prod):** \`${{ steps.export-image.outputs.image-prod-with-tag }}\`" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          if [ "${{ matrix.docker-target }}" = "dev" ]; then
-            echo "**Image Name (dev):** \`${{ steps.export-image.outputs.image-dev-with-tag }}\`" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          echo "**Image Name (prod):** \`${{ steps.export-image.outputs.image-prod-with-tag }}\`" >> "$GITHUB_STEP_SUMMARY"
