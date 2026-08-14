@@ -1,0 +1,41 @@
+# Local SAST: run zizmor (via the zizmor-action) against ci-templates' OWN workflows.
+# The callable sast-zizmor.yml (zizmor CLI) is for OTHER repos to call;
+# this one lints this repo itself on pull requests and pushes to main.
+name: sast-zizmor-local
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+# No workflow-level permissions; the single job grants only what it needs (below).
+permissions: {}
+
+jobs:
+  zizmor:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write  # upload zizmor SARIF to code scanning (advanced-security defaults on)
+      contents: read          # checkout to scan the repo's workflows
+      actions: read           # read workflow metadata for zizmor's online audits
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@71321a20a9ded102f6e9ce5718a2fcec2c4f70d8 # v0.5.2
+        with:
+          persona: pedantic
+          # No `token:` is set, so the action defaults to github.token — authenticated, and
+          # able to read this repo + all PUBLIC repos, which is enough for zizmor's online
+          # audits because ci-templates references only public actions.
+          #
+          # Doc: https://docs.zizmor.sh/usage/#github-api-token-permissions
+          # If a workflow here ever references a SHA-pinned action/reusable-workflow in a
+          # PRIVATE org repo, github.token can't read it and impostor-commit HARD-FAILS
+          # ("can't access <repo>"). In that case add a fine-grained read-only PAT (Contents:
+          # Read-only, scoped to that private repo) as a repo secret and uncomment next line:
+          #token: ${{ secrets.YOUR_READ_ONLY_TOKEN }} # zizmor: ignore[secrets-outside-env]
