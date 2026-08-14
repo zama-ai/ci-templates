@@ -9,11 +9,16 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # No workflow-level permissions; the single job grants only what it needs (below).
 permissions: {}
 
 jobs:
   sast-zizmor-local-job:
+    name: sast_zizmor_local_job
     runs-on: ubuntu-latest
     permissions:
       security-events: write  # upload zizmor SARIF to code scanning (advanced-security defaults on)
