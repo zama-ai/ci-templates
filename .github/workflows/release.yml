@@ -16,11 +16,15 @@ jobs:
         with:
           fetch-depth: 0
       # Migrated off codfish/semantic-release-action (GitHub ToS-blocked since 2026-06-25,
-      # which broke this workflow using all tags) to the maintained cycjimmy action. It reads
-      # the existing .releaserc; extra_plugins pre-installs the two plugins semantic-release
-      # doesn't bundle.
-      # Info why codfish/semantic-release-action is blocked:
+      # which broke this workflow using any tag) to the maintained cycjimmy action. 
+      # Why codfish/semantic-release-action is blocked:
       # https://www.aikido.dev/blog/compromised-github-action-codfish-steals-secrets
+      #
+      # cycjimmy runs semantic-release, which AUTO-READS the existing .releaserc for the full
+      # plugin pipeline, order, and tagFormat — so the pipeline is NOT re-declared here (unlike
+      # codfish's `plugins:` input). `extra_plugins` is install-only: it pre-installs the two
+      # plugins semantic-release does not bundle (@semantic-release/changelog and .../git);
+      # commit-analyzer, release-notes-generator, and github are already bundled.
       - name: Release
         uses: cycjimmy/semantic-release-action@b12c8f6015dc215fe37bc154d4ad456dd3833c90 # v6.0.0
         with:
