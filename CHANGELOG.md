@@ -1,3 +1,13 @@
+# Changelog
+
+## [1.0.12](https://github.com/zama-ai/ci-templates/compare/v1.0.11...v1.0.12) (2026-08-27)
+
+
+### Bug Fixes
+
+* migrate release off ToS-blocked codfish action to cycjimmy ([12a312f](https://github.com/zama-ai/ci-templates/commit/12a312f3219b8d8b66c022120be88c7a67f4b79a))
+* solves zizmor findings ([c817e5d](https://github.com/zama-ai/ci-templates/commit/c817e5d69c2ea098c43201fc24f397ad9ee9128f))
+
 ## [1.0.8](https://github.com/zama-ai/ci-templates/compare/v1.0.7...v1.0.8) (2026-05-26)
 
 
