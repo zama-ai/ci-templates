@@ -15,6 +15,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-depth: 0
+          token: ${{ secrets.ZAMA_BOT_TOKEN }}
       # Migrated off codfish/semantic-release-action (GitHub ToS-blocked since 2026-06-25,
       # which broke this workflow using any tag) to the maintained cycjimmy action. 
       # Why codfish/semantic-release-action is blocked:
