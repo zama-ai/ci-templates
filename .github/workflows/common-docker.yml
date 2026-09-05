@@ -44,6 +44,15 @@ on:
         type: string
         required: false
         default: "ubuntu-latest"
+      runs-on-arm:
+        type: string
+        required: false
+        default: "large_ubuntu_16_arm"
+      build-arm:
+        description: "Also build and publish linux/arm64 (opt-in per image; default keeps builds amd64-only)"
+        type: boolean
+        required: false
+        default: false
       docker-file:
         type: string
         default: "Dockerfile"
@@ -91,6 +100,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       docker_tag: ${{ steps.set-tag.outputs.tag }}
+      platforms: ${{ steps.set-platforms.outputs.matrix }}
     steps:
       - name: Checkout Project
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -115,6 +125,21 @@ jobs:
             echo "tag=$(git rev-parse --short "$COMMIT_HASH")" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Set Build Platforms
+        id: set-platforms
+        env:
+          RUNS_ON_AMD: ${{ inputs.runs-on-amd }}
+          RUNS_ON_ARM: ${{ inputs.runs-on-arm }}
+          BUILD_ARM: ${{ inputs.build-arm }}
+        run: |
+          AMD="{\"platform\":\"linux/amd64\",\"runs-on\":\"$RUNS_ON_AMD\",\"platform-tag\":\"amd64\",\"docker-target\":\"prod\"}"
+          ARM="{\"platform\":\"linux/arm64\",\"runs-on\":\"$RUNS_ON_ARM\",\"platform-tag\":\"arm64\",\"docker-target\":\"prod\"}"
+          if [ "$BUILD_ARM" = "true" ]; then
+            echo "matrix=[$AMD,$ARM]" >> "$GITHUB_OUTPUT"
+          else
+            echo "matrix=[$AMD]" >> "$GITHUB_OUTPUT"
+          fi
+
   build-and-push-docker:
     permissions:
       contents: "read"
@@ -125,13 +150,11 @@ jobs:
       digest: ${{ steps.push.outputs.digest }}
       image-amd64-prod: ${{ steps.export-image-and-digest.outputs.image-amd64-prod }}
       digest-amd64-prod: ${{ steps.export-image-and-digest.outputs.digest-amd64-prod }}
+      image-arm64-prod: ${{ steps.export-image-and-digest.outputs.image-arm64-prod }}
+      digest-arm64-prod: ${{ steps.export-image-and-digest.outputs.digest-arm64-prod }}
     strategy:
       matrix:
-        include:
-          - platform: linux/amd64
-            runs-on: ${{ inputs.runs-on-amd }}
-            platform-tag: amd64
-            docker-target: prod
+        include: ${{ fromJSON(needs.determine-tag.outputs.platforms) }}
     runs-on: ${{ matrix.runs-on }}
     steps:
       - name: Checkout Project
@@ -248,8 +271,16 @@ jobs:
         id: export-image-and-digest
         if: matrix.docker-target == 'prod'
         run: |
-          echo "image-amd64-prod=${{ steps.push.outputs.image }}" >> $GITHUB_OUTPUT
-          echo "digest-amd64-prod=${{ steps.push.outputs.digest }}" >> $GITHUB_OUTPUT
+          if ${{ matrix.platform-tag == 'amd64' }}
+          then
+            echo "image-amd64-prod=${{ steps.push.outputs.image }}" >> $GITHUB_OUTPUT
+            echo "digest-amd64-prod=${{ steps.push.outputs.digest }}" >> $GITHUB_OUTPUT
+          fi
+          if ${{ matrix.platform-tag == 'arm64' }}
+          then
+            echo "image-arm64-prod=${{ steps.push.outputs.image }}" >> $GITHUB_OUTPUT
+            echo "digest-arm64-prod=${{ steps.push.outputs.digest }}" >> $GITHUB_OUTPUT
+          fi
 
   create-manifest:
     permissions:
@@ -276,13 +307,20 @@ jobs:
         uses: zama-ai/ci-templates/.github/actions/retry@386b427a48c105df7615cc03ad0e3330cedc05d8 # v1.0.8
         with:
           command: |
+            AMEND_ARM=""
+            if [ "${{ inputs.build-arm }}" = "true" ]; then
+              AMEND_ARM="--amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-prod"
+            fi
+
             docker manifest create \
               ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }} \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-prod
+              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-prod \
+              $AMEND_ARM
 
             docker manifest create \
               ghcr.io/zama-ai/${{ inputs.image-name }}:latest \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-prod
+              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-prod \
+              $AMEND_ARM
 
             docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}
             if [ "${{ github.event_name }}" = "release" ]; then
