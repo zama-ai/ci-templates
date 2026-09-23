@@ -49,7 +49,7 @@ on:
         required: false
         default: "large_ubuntu_16_arm"
       build-arm:
-        description: "Also build and publish linux/arm64 (opt-in per image; default keeps builds amd64-only)"
+        description: "Also build and publish linux/arm64"
         type: boolean
         required: false
         default: false
@@ -124,10 +124,16 @@ jobs:
       contents: "read"
       packages: "write"
     needs: determine-tag
+    outputs:
+      image: ${{ steps.push.outputs.image }}
+      digest: ${{ steps.push.outputs.digest }}
+      image-amd64-prod: ${{ steps.export-image-and-digest.outputs.image-amd64-prod }}
+      digest-amd64-prod: ${{ steps.export-image-and-digest.outputs.digest-amd64-prod }}
     strategy:
       matrix:
-        arch: ${{ fromJSON(inputs.build-arm && '["amd64", "arm64"]' || '["amd64"]') }}
-    runs-on: ${{ matrix.arch == 'arm64' && inputs.runs-on-arm || inputs.runs-on-amd }}
+        platform-tag: ${{ fromJSON(inputs.build-arm && '["amd64", "arm64"]' || '["amd64"]') }}
+        docker-target: [prod]
+    runs-on: ${{ matrix.platform-tag == 'arm64' && inputs.runs-on-arm || inputs.runs-on-amd }}
     steps:
       - name: Checkout Project
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -151,7 +157,7 @@ jobs:
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
         with:
           driver-opts: image=moby/buildkit:v0.25.1 # https://github.com/moby/buildkit/issues/6357 could be removed once buildkit is fixed
-          platforms: linux/${{ matrix.arch }}
+          platforms: linux/${{ matrix.platform-tag }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
@@ -203,26 +209,26 @@ jobs:
           build-args: |
             RUST_IMAGE_VERSION=${{ env.RUST_IMAGE_VERSION }}
             LTO_RELEASE=${{ inputs.lto-release }}
-            TARGETARCH=${{ matrix.arch }}
+            TARGETARCH=${{ matrix.platform-tag }}
             APP_CACHE_DIR=${{ inputs.app-cache-dir }}
             SCCACHE_BUCKET=${{ env.RUNS_ON_S3_BUCKET_CACHE }}
             SCCACHE_REGION=${{ env.RUNS_ON_AWS_REGION }}
-            SCCACHE_S3_PREFIX=sccache/${{ github.repository }}/${{ inputs.app-cache-dir }}/${{ matrix.arch }}
+            SCCACHE_S3_PREFIX=sccache/${{ github.repository }}/${{ inputs.app-cache-dir }}/${{ matrix.platform-tag }}
           context: ${{ inputs.docker-context }}
           secrets: |
             BLOCKCHAIN_ACTIONS_TOKEN=${{ secrets.BLOCKCHAIN_ACTIONS_TOKEN }}
             sccache_aws_access_key_id=${{ secrets.AWS_ACCESS_KEY_S3_USER }}
             sccache_aws_secret_access_key=${{ secrets.AWS_SECRET_KEY_S3_USER }}
           file: ${{ inputs.docker-file }}
-          platforms: linux/${{ matrix.arch }}
+          platforms: linux/${{ matrix.platform-tag }}
           push: ${{ inputs.push_image }}
           pull: false
           provenance: false
           sbom: false
-          target: prod
+          target: ${{ matrix.docker-target }}
           labels: ${{ steps.meta.outputs.labels }}
           tags: |
-            ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.arch }}-prod
+            ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-${{ matrix.platform-tag }}-${{ matrix.docker-target }}
           # BuildKit layer cache, scoped per-branch with `main` as a fallback baseline.
           # - cache-from: read from this branch's prefix first, then fall back to `main`.
           #   On the first build of a feature branch the per-branch prefix is empty,
@@ -234,9 +240,16 @@ jobs:
           # Pair this with an S3 lifecycle policy that expires per-branch prefixes after
           # ~14 days of inactivity so cache storage doesn't grow unboundedly.
           cache-from: |
-            type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.arch }}/${{ github.head_ref || github.ref_name }}/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.arch }}/${{ github.head_ref || github.ref_name }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }}
-            type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.arch }}/main/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.arch }}/main/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }}
-          cache-to: type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.arch }}/${{ github.head_ref || github.ref_name }}/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.arch }}/${{ github.head_ref || github.ref_name }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }},mode=max
+            type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/${{ github.head_ref || github.ref_name }}/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/${{ github.head_ref || github.ref_name }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }}
+            type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/main/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/main/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }}
+          cache-to: type=s3,blobs_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/${{ github.head_ref || github.ref_name }}/,manifests_prefix=cache/${{ github.repository }}-${{ inputs.app-cache-dir }}-${{ matrix.platform-tag }}/${{ github.head_ref || github.ref_name }}/,region=${{ env.RUNS_ON_AWS_REGION }},bucket=${{ env.RUNS_ON_S3_BUCKET_CACHE }},mode=max
+
+      - name: Export image and digest
+        id: export-image-and-digest
+        if: matrix.platform-tag == 'amd64' && matrix.docker-target == 'prod'
+        run: |
+          echo "image-amd64-prod=${{ steps.push.outputs.image }}" >> $GITHUB_OUTPUT
+          echo "digest-amd64-prod=${{ steps.push.outputs.digest }}" >> $GITHUB_OUTPUT
 
   create-manifest:
     permissions:
