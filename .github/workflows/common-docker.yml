@@ -44,6 +44,15 @@ on:
         type: string
         required: false
         default: "ubuntu-latest"
+      runs-on-arm:
+        type: string
+        required: false
+        default: "large_ubuntu_16_arm"
+      build-arm:
+        description: "Also build and publish linux/arm64"
+        type: boolean
+        required: false
+        default: false
       docker-file:
         type: string
         default: "Dockerfile"
@@ -127,12 +136,9 @@ jobs:
       digest-amd64-prod: ${{ steps.export-image-and-digest.outputs.digest-amd64-prod }}
     strategy:
       matrix:
-        include:
-          - platform: linux/amd64
-            runs-on: ${{ inputs.runs-on-amd }}
-            platform-tag: amd64
-            docker-target: prod
-    runs-on: ${{ matrix.runs-on }}
+        platform-tag: ${{ fromJSON(inputs.build-arm && '["amd64", "arm64"]' || '["amd64"]') }}
+        docker-target: [prod]
+    runs-on: ${{ matrix.platform-tag == 'arm64' && inputs.runs-on-arm || inputs.runs-on-amd }}
     steps:
       - name: Checkout Project
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
@@ -156,7 +162,7 @@ jobs:
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
         with:
           driver-opts: image=moby/buildkit:v0.25.1 # https://github.com/moby/buildkit/issues/6357 could be removed once buildkit is fixed
-          platforms: ${{ matrix.platform }}
+          platforms: linux/${{ matrix.platform-tag }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
@@ -220,7 +226,7 @@ jobs:
             sccache_aws_access_key_id=${{ secrets.AWS_ACCESS_KEY_S3_USER }}
             sccache_aws_secret_access_key=${{ secrets.AWS_SECRET_KEY_S3_USER }}
           file: ${{ inputs.docker-file }}
-          platforms: ${{ matrix.platform }}
+          platforms: linux/${{ matrix.platform-tag }}
           push: ${{ inputs.push_image }}
           pull: false
           provenance: false
@@ -246,7 +252,7 @@ jobs:
 
       - name: Export image and digest
         id: export-image-and-digest
-        if: matrix.docker-target == 'prod'
+        if: matrix.platform-tag == 'amd64' && matrix.docker-target == 'prod'
         run: |
           echo "image-amd64-prod=${{ steps.push.outputs.image }}" >> $GITHUB_OUTPUT
           echo "digest-amd64-prod=${{ steps.push.outputs.digest }}" >> $GITHUB_OUTPUT
@@ -276,13 +282,20 @@ jobs:
         uses: zama-ai/ci-templates/.github/actions/retry@386b427a48c105df7615cc03ad0e3330cedc05d8 # v1.0.8
         with:
           command: |
+            AMEND_ARM=()
+            if [ "${{ inputs.build-arm }}" = "true" ]; then
+              AMEND_ARM=(--amend "ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-arm64-prod")
+            fi
+
             docker manifest create \
               ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }} \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-prod
+              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-prod \
+              "${AMEND_ARM[@]}"
 
             docker manifest create \
               ghcr.io/zama-ai/${{ inputs.image-name }}:latest \
-              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-prod
+              --amend ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}-amd64-prod \
+              "${AMEND_ARM[@]}"
 
             docker manifest push ghcr.io/zama-ai/${{ inputs.image-name }}:${{ needs.determine-tag.outputs.docker_tag }}
             if [ "${{ github.event_name }}" = "release" ]; then
