@@ -9,11 +9,10 @@ steps:
     run: docker build -t docker.io/my-organization/my-app:${{ github.sha }} .
 
   - name: Run Trivy vulnerability scanner
-    uses: aquasecurity/trivy-action@5681af892cd0f4997658e2bacc62bd0a894cf564 # 0.27.0
+    uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
     with:
       image-ref: 'docker.io/my-organization/my-app:${{ github.sha }}'
       format: 'table'
       exit-code: '1'
       ignore-unfixed: true
-      vuln-type: 'os,library'
       severity: 'CRITICAL,HIGH'
