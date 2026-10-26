@@ -1,0 +1,44 @@
+name: trivy-iac
+description: Scan IaC files with Trivy, with the shared rules of checks/ for providers that Trivy does not cover (Scaleway, Nebius).
+inputs:
+  path:
+    description: Folder to scan, relative to the repository root.
+    default: '.'
+  extra-checks:
+    description: Folder of repo-specific Rego rules, relative to the repository root. Rules must use a `user.*` package.
+    default: ''
+  misconfig-scanners:
+    description: Comma-separated Trivy misconfig scanners, for example `terraform`. Empty scans all IaC types.
+    default: ''
+  exit-code:
+    description: Exit code when Trivy finds a misconfiguration. Set to '0' to report only.
+    default: '1'
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+        SHARED_CHECKS: ${{ github.action_path }}/checks
+        SCAN_PATH: ${{ inputs.path }}
+        EXTRA_CHECKS: ${{ inputs.extra-checks }}
+        MISCONFIG_SCANNERS: ${{ inputs.misconfig-scanners }}
+        EXIT_CODE: ${{ inputs.exit-code }}
+      run: |
+        mounts=(-v "${GITHUB_WORKSPACE}:/repo:ro" -v "${SHARED_CHECKS}:/checks/shared:ro")
+        args=(--config-check /checks/shared)
+        if [ -n "$EXTRA_CHECKS" ]; then
+          if [ ! -d "${GITHUB_WORKSPACE}/${EXTRA_CHECKS}" ]; then
+            echo "extra-checks folder not found: ${EXTRA_CHECKS}" >&2
+            exit 1
+          fi
+          mounts+=(-v "${GITHUB_WORKSPACE}/${EXTRA_CHECKS}:/checks/extra:ro")
+          args+=(--config-check /checks/extra)
+        fi
+        if [ -n "$MISCONFIG_SCANNERS" ]; then
+          args+=(--misconfig-scanners "$MISCONFIG_SCANNERS")
+        fi
+        docker run --rm -w /repo "${mounts[@]}" "$TRIVY_IMAGE" config \
+          --skip-version-check --exit-code "$EXIT_CODE" \
+          --raw-config-scanners terraform --check-namespaces user \
+          "${args[@]}" -- "$SCAN_PATH"
