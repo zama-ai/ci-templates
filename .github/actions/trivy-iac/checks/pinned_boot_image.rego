@@ -19,8 +19,8 @@ deny contains res if {
 	some block in input.modules[_].blocks
 	block.kind == "resource"
 	block.type == "nebius_compute_v1_disk"
-	not block.attributes.source_image_id
-	res := result.new("Nebius disk does not pin 'source_image_id'", block)
+	block.attributes.source_image_family
+	res := result.new("Nebius disk uses 'source_image_family', not 'source_image_id'", block)
 }
 
 # A literal that is not a UUID is a marketplace label
