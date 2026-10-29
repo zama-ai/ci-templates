@@ -38,20 +38,17 @@ runs:
         if [ -n "$MISCONFIG_SCANNERS" ]; then
           args+=(--misconfig-scanners "$MISCONFIG_SCANNERS")
         fi
-        # Trivy runs offline, so a remote module needs a terraform init before the scan
-        uninitialized=0
-        while IFS= read -r -d '' tf; do
-          if [ ! -d "$(dirname "$tf")/.terraform/modules" ] && awk '/^[[:space:]]*module[[:space:]]+"/ {m=1} m && /^[[:space:]]*source[[:space:]]*=/ {m=0; if ($0 !~ /"\.\.?\//) found=1} END {exit !found}' "$tf"; then
-            file="${tf#"${GITHUB_WORKSPACE}/"}"
-            file="${file#./}"
-            echo "::error file=${file}::Remote Terraform module is not initialized. Run 'terraform init -backend=false -input=false' in $(dirname "$file") before trivy-iac."
-            uninitialized=1
-          fi
-        done < <(find "${GITHUB_WORKSPACE}/${SCAN_PATH}" -name '*.tf' -not -path '*/.terraform/*' -print0)
-        if [ "$uninitialized" -ne 0 ]; then
-          exit 1
-        fi
+        log="$(mktemp)"
+        set +e
         docker run --rm --network none -w /repo "${mounts[@]}" "$TRIVY_IMAGE" config \
           --skip-version-check --skip-check-update --exit-code "$EXIT_CODE" \
           --raw-config-scanners terraform --check-namespaces user \
-          "${args[@]}" -- "$SCAN_PATH"
+          "${args[@]}" -- "$SCAN_PATH" 2>&1 | tee "$log"
+        status="${PIPESTATUS[0]}"
+        set -e
+        # Trivy runs offline, so it cannot load a remote module without a terraform init
+        if grep -q 'Failed to load module' "$log"; then
+          echo "::error::A Terraform module did not load, so the scan is incomplete. Run 'terraform init -backend=false -input=false' in its Terraform root before trivy-iac. See the 'Failed to load module' lines above."
+          exit 1
+        fi
+        exit "$status"
