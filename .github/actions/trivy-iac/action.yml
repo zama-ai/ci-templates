@@ -39,13 +39,18 @@ runs:
           args+=(--misconfig-scanners "$MISCONFIG_SCANNERS")
         fi
         # Trivy runs offline, so a remote module needs a terraform init before the scan
-        find "${GITHUB_WORKSPACE}/${SCAN_PATH}" -name '*.tf' -not -path '*/.terraform/*' -print0 |
-          while IFS= read -r -d '' tf; do
-            if [ ! -d "$(dirname "$tf")/.terraform/modules" ] && awk '/^[[:space:]]*module[[:space:]]+"/ {m=1} m && /^[[:space:]]*source[[:space:]]*=/ {m=0; if ($0 !~ /"\.\.?\//) found=1} END {exit !found}' "$tf"; then
-              file="${tf#"${GITHUB_WORKSPACE}/"}"
-              echo "::warning file=${file#./}::Remote Terraform module is not scanned. Run terraform init before trivy-iac."
-            fi
-          done
+        uninitialized=0
+        while IFS= read -r -d '' tf; do
+          if [ ! -d "$(dirname "$tf")/.terraform/modules" ] && awk '/^[[:space:]]*module[[:space:]]+"/ {m=1} m && /^[[:space:]]*source[[:space:]]*=/ {m=0; if ($0 !~ /"\.\.?\//) found=1} END {exit !found}' "$tf"; then
+            file="${tf#"${GITHUB_WORKSPACE}/"}"
+            file="${file#./}"
+            echo "::error file=${file}::Remote Terraform module is not initialized. Run 'terraform init -backend=false -input=false' in $(dirname "$file") before trivy-iac."
+            uninitialized=1
+          fi
+        done < <(find "${GITHUB_WORKSPACE}/${SCAN_PATH}" -name '*.tf' -not -path '*/.terraform/*' -print0)
+        if [ "$uninitialized" -ne 0 ]; then
+          exit 1
+        fi
         docker run --rm --network none -w /repo "${mounts[@]}" "$TRIVY_IMAGE" config \
           --skip-version-check --skip-check-update --exit-code "$EXIT_CODE" \
           --raw-config-scanners terraform --check-namespaces user \

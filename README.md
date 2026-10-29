@@ -23,7 +23,7 @@ Continuous Integration templates for Security and Quality. These snippets are st
 - Scan your IaC files with [trivy-iac](./security/trivy-iac.yml)
 
 > [!TIP]
-> Trivy has no built-in rules for some providers. The action adds shared rules for Scaleway and Nebius from [checks](./.github/actions/trivy-iac/checks). Add your own Rego rules with the `extra-checks` input, and skip a finding with `# trivy:ignore:<ID> <reason>` on the line before the block. By default, the action scans all IaC types (Dockerfile, Helm, Kubernetes, Terraform, ...). Start with `exit-code: '0'` to see the findings, or limit the scan with `misconfig-scanners: 'terraform'`. The scan runs offline, so it does not download remote Terraform modules. To scan them, run `terraform init -backend=false -input=false` in a step before the action.
+> Trivy has no built-in rules for some providers. The action adds shared rules for Scaleway and Nebius from [checks](./.github/actions/trivy-iac/checks). Add your own Rego rules with the `extra-checks` input, and skip a finding with `# trivy:ignore:<ID> <reason>` on the line before the block. By default, the action scans all IaC types (Dockerfile, Helm, Kubernetes, Terraform, ...). Start with `exit-code: '0'` to see the findings, or limit the scan with `misconfig-scanners: 'terraform'`. The scan runs offline, so the action fails when a Terraform root uses a remote module without an initialized cache. Run `terraform init -backend=false -input=false` in that root in a step before the action.
 
 ## Helm
 
