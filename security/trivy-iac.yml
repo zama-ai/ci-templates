@@ -1,0 +1,13 @@
+runs-on: 'ubuntu-latest'
+steps:
+  - name: Checkout project
+    uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    with:
+      persist-credentials: 'false'
+
+  - name: Scan IaC with Trivy
+    uses: zama-ai/ci-templates/.github/actions/trivy-iac@<sha> # vX.Y.Z
+    with:
+      path: '.'
+      # extra-checks: '.trivy/checks'
+      # misconfig-scanners: 'terraform'
