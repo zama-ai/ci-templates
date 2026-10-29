@@ -1,5 +1,12 @@
 # Changelog
 
+# [1.1.0](https://github.com/zama-ai/ci-templates/compare/v1.0.13...v1.1.0) (2026-10-29)
+
+
+### Features
+
+* **security:** add trivy-iac action with shared Scaleway and Nebius rules ([#38](https://github.com/zama-ai/ci-templates/issues/38)) ([8c8e6d2](https://github.com/zama-ai/ci-templates/commit/8c8e6d2364fd230865d67079f82036218b8db89d))
+
 ## [1.0.12](https://github.com/zama-ai/ci-templates/compare/v1.0.11...v1.0.12) (2026-08-27)
 
 
