@@ -1,5 +1,12 @@
 # Changelog
 
+# [1.2.0](https://github.com/zama-ai/ci-templates/compare/v1.1.0...v1.2.0) (2026-11-09)
+
+
+### Features
+
+* **trivy-iac:** move scan to scan.sh so it is easier to test locally ([#39](https://github.com/zama-ai/ci-templates/issues/39)) ([e09c54e](https://github.com/zama-ai/ci-templates/commit/e09c54ee6d017b2e27847415254e91f59505ca5d))
+
 # [1.1.0](https://github.com/zama-ai/ci-templates/compare/v1.0.13...v1.1.0) (2026-10-29)
 
 
