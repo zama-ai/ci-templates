@@ -1,0 +1,412 @@
+# Build, scan, sign and publish a container image to a generic OCI registry (Harbor by default).
+#
+# Follows Docker's "Build a trusted delivery pipeline" guide and Chainguard's verification docs:
+#   1. build once, push by digest only (no tag yet), with an SBOM and max-level provenance;
+#   2. gate on a Trivy scan of that digest;
+#   3. verify every Chainguard base image the build used (read from the provenance) against
+#      Chainguard's signing identity;
+#   4. sign the digest keyless (GitHub OIDC), attest each platform's SPDX SBOM with cosign,
+#      and verify the signature against this workflow's identity;
+#   5. publish the tags last, pointing at the already-signed digest.
+# Without push (pull requests), the image is built and scanned locally, nothing leaves the runner.
+#
+# Caller example:
+#
+#   jobs:
+#     image:
+#       permissions:
+#         contents: read
+#         id-token: write # keyless signing
+#       uses: zama-ai/ci-templates/.github/workflows/common-docker-product.yml@<sha> # vX.Y.Z
+#       with:
+#         image-name: tokenops/core-api
+#         docker-target: prod
+#         push: ${{ github.event_name != 'pull_request' }}
+#         environment: ${{ github.event_name != 'pull_request' && 'image-publish' || '' }}
+#       secrets:
+#         CGR_USERNAME: ${{ secrets.CGR_USERNAME }}
+#         CGR_PASSWORD: ${{ secrets.CGR_PASSWORD }}
+#
+# Protecting the push credentials: create a GitHub environment (here `image-publish`) that
+# only the publishing branches and tags may use, and store REGISTRY_USERNAME /
+# REGISTRY_PASSWORD there, not as repository secrets. A caller cannot hand environment
+# secrets to a reusable workflow, so this job enters the environment itself (the
+# `environment` input) and reads them directly; an environment secret wins over a secret of
+# the same name passed by the caller. The Chainguard token is read-only and needed by pull
+# request builds too, so it can stay a repository secret.
+#
+# Verifying a published image (deploy side, e.g. a Kyverno verifyImages rule):
+#
+#   cosign verify \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+#     --certificate-identity-regexp '^https://github.com/zama-ai/ci-templates/\.github/workflows/common-docker-product\.yml@' \
+#     --certificate-github-workflow-repository <owner>/<caller-repo> \
+#     <registry>/<image-name>@<digest>
+#
+# Provenance at mode=max records build-arg values: never pass a secret through `build-args`.
+name: Docker build, scan, sign and publish (product)
+
+on:
+  workflow_call:
+    secrets:
+      REGISTRY_USERNAME:
+        description: "Registry user (Harbor: the project's robot account). Prefer an environment secret, see `environment`"
+        required: false
+      REGISTRY_PASSWORD:
+        description: "Registry password or token. Prefer an environment secret, see `environment`"
+        required: false
+      CGR_USERNAME:
+        description: "Chainguard pull token user, to pull and verify cgr.dev base images"
+        required: false
+      CGR_PASSWORD:
+        description: "Chainguard pull token password"
+        required: false
+    inputs:
+      registry:
+        description: "Registry host"
+        type: string
+        default: "hub.zama.org"
+      image-name:
+        description: "Repository path inside the registry, e.g. `tokenops/core-api`"
+        type: string
+        required: true
+      push:
+        description: "Push, sign and tag. False builds and scans locally only (use it for pull requests)"
+        type: boolean
+        default: true
+      environment:
+        description: "GitHub environment holding REGISTRY_USERNAME / REGISTRY_PASSWORD, restricted to the publishing refs. Empty: none"
+        type: string
+        default: ""
+      ref:
+        description: "Git ref to build (default: the triggering ref)"
+        type: string
+        default: ""
+      docker-context:
+        type: string
+        default: "."
+      docker-file:
+        description: "Dockerfile path (default: <docker-context>/Dockerfile)"
+        type: string
+        default: ""
+      docker-target:
+        description: "Dockerfile stage to build (default: the last one)"
+        type: string
+        default: ""
+      build-args:
+        description: "Extra build args, one KEY=VALUE per line. Recorded in the provenance: no secrets"
+        type: string
+        default: ""
+      platforms:
+        description: "Comma separated platforms. A local build (push: false) supports one only"
+        type: string
+        default: "linux/amd64"
+      tags:
+        description: "docker/metadata-action tag rules"
+        type: string
+        default: |
+          type=sha,prefix=,format=short
+          type=semver,pattern={{version}}
+          type=ref,event=branch
+      cache-scope:
+        description: "GitHub Actions cache scope (default: the image name)"
+        type: string
+        default: ""
+      runs-on:
+        type: string
+        default: "ubuntu-latest"
+      timeout-minutes:
+        type: number
+        default: 45
+      scan-severity:
+        description: "Trivy severities that fail the gate"
+        type: string
+        default: "CRITICAL,HIGH"
+      scan-ignore-unfixed:
+        description: "Ignore vulnerabilities without a fix"
+        type: boolean
+        default: true
+      scan-exit-code:
+        description: "Trivy exit code on findings: '1' gates, '0' reports only"
+        type: string
+        default: "1"
+      verify-base-images:
+        description: "Verify the cosign signature of every base image matching base-image-prefixes"
+        type: boolean
+        default: true
+      base-image-prefixes:
+        description: "Space separated image name prefixes to verify as Zama Chainguard images"
+        type: string
+        default: "cgr.dev/zama.ai/"
+      base-image-identity-regexp:
+        description: "Chainguard signing identity: the zama.ai organisation's service identities"
+        type: string
+        default: '^https://issuer\.enforce\.dev/5c24d2957df07af000b428f24927edb071be97dc/'
+    outputs:
+      image:
+        description: "<registry>/<image-name>"
+        value: ${{ jobs.build.outputs.image }}
+      digest:
+        description: "Signed manifest digest (empty without push)"
+        value: ${{ jobs.build.outputs.digest }}
+      tags:
+        description: "Published tags, one per line"
+        value: ${{ jobs.build.outputs.tags }}
+
+permissions: {}
+
+jobs:
+  build:
+    name: ${{ inputs.image-name }}
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write # cosign keyless signing and attestation
+    defaults:
+      run:
+        shell: bash
+    env:
+      IMAGE: ${{ inputs.registry }}/${{ inputs.image-name }}
+      PUSH: ${{ inputs.push }}
+      HAS_CGR: ${{ secrets.CGR_USERNAME != '' }}
+    outputs:
+      image: ${{ steps.result.outputs.image }}
+      digest: ${{ steps.result.outputs.digest }}
+      tags: ${{ steps.result.outputs.tags }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Check inputs
+        env:
+          PLATFORMS: ${{ inputs.platforms }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+        run: |
+          if [[ "${PUSH}" == "true" && -z "${REGISTRY_USERNAME}" ]]; then
+            echo "::error::push is true but REGISTRY_USERNAME / REGISTRY_PASSWORD are not set${ENVIRONMENT:+ in environment ${ENVIRONMENT}}"
+            exit 1
+          fi
+          if [[ "${PUSH}" == "true" && -z "${ENVIRONMENT}" ]]; then
+            echo "::warning::pushing with registry credentials outside a GitHub environment: any workflow on any branch can read them. Set the environment input"
+          fi
+          if [[ "${PUSH}" != "true" && "${PLATFORMS}" == *,* ]]; then
+            echo "::error::a local build (push: false) supports a single platform, got ${PLATFORMS}"
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Login to Chainguard
+        if: env.HAS_CGR == 'true'
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: cgr.dev
+          username: ${{ secrets.CGR_USERNAME }}
+          password: ${{ secrets.CGR_PASSWORD }}
+
+      - name: Login to ${{ inputs.registry }}
+        if: inputs.push
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ${{ inputs.registry }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: ${{ inputs.tags }}
+          labels: |
+            org.opencontainers.image.vendor=zama.ai
+
+      # One build, pushed by digest only: the tags come last, once the digest is scanned and signed.
+      - name: Build and push by digest
+        id: build
+        if: inputs.push
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
+        with:
+          context: ${{ inputs.docker-context }}
+          file: ${{ inputs.docker-file }}
+          target: ${{ inputs.docker-target }}
+          build-args: ${{ inputs.build-args }}
+          platforms: ${{ inputs.platforms }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          sbom: true
+          provenance: mode=max
+          pull: true
+          cache-from: type=gha,scope=${{ inputs.cache-scope || inputs.image-name }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.cache-scope || inputs.image-name }}
+
+      - name: Build locally
+        if: ${{ !inputs.push }}
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
+        with:
+          context: ${{ inputs.docker-context }}
+          file: ${{ inputs.docker-file }}
+          target: ${{ inputs.docker-target }}
+          build-args: ${{ inputs.build-args }}
+          platforms: ${{ inputs.platforms }}
+          labels: ${{ steps.meta.outputs.labels }}
+          load: true
+          tags: ${{ env.IMAGE }}:ci-local
+          pull: true
+          cache-from: type=gha,scope=${{ inputs.cache-scope || inputs.image-name }}
+
+      - name: Image reference
+        id: ref
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          if [[ "${PUSH}" == "true" ]]; then
+            echo "ref=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${IMAGE}:ci-local" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Scan (gate)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_USERNAME: ${{ inputs.push && secrets.REGISTRY_USERNAME || '' }}
+          TRIVY_PASSWORD: ${{ inputs.push && secrets.REGISTRY_PASSWORD || '' }}
+        with:
+          image-ref: ${{ steps.ref.outputs.ref }}
+          format: table
+          exit-code: ${{ inputs.scan-exit-code }}
+          ignore-unfixed: ${{ inputs.scan-ignore-unfixed }}
+          severity: ${{ inputs.scan-severity }}
+          vuln-type: os,library
+
+      - name: Install cosign
+        if: inputs.push
+        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+
+      # Reads the base images from the build's own provenance, so it checks exactly what was used.
+      - name: Verify base images (gate)
+        if: inputs.push && inputs.verify-base-images
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+          PREFIXES: ${{ inputs.base-image-prefixes }}
+          IDENTITY_RE: ${{ inputs.base-image-identity-regexp }}
+        run: |
+          set -euo pipefail
+          # Single platform: {"SLSA": ...}; several: {"linux/amd64": {"SLSA": ...}, ...}. SLSA v0.2 or v1.
+          uris=()
+          while IFS= read -r line; do uris+=("${line}"); done < <(
+            docker buildx imagetools inspect "${REF}" --format '{{ json .Provenance }}' \
+              | jq -r '[.. | objects | (.materials?, .buildDefinition?.resolvedDependencies?) | select(type == "array") | .[]
+                  | select(.uri?) | "\(.uri) \(.digest.sha256 // "")"] | unique[]'
+          )
+          checked=0
+          for entry in "${uris[@]}"; do
+            uri="${entry%% *}"; material_digest="${entry#* }"
+            [[ "${uri}" == pkg:docker/* ]] || continue
+            ref="${uri#pkg:docker/}"
+            name="${ref%%@*}"; name="${name%%\?*}"
+            digest="${material_digest:+sha256:${material_digest}}"
+            match=false
+            for prefix in ${PREFIXES}; do [[ "${name}" == "${prefix}"* ]] && match=true; done
+            [[ "${match}" == "true" ]] || { echo "skip ${name} (not a verified prefix)"; continue; }
+            [[ -n "${digest}" ]] || { echo "::error::no digest for base image ${name} in the provenance"; exit 1; }
+            echo "verify ${name}@${digest}"
+            cosign verify \
+              --certificate-oidc-issuer https://issuer.enforce.dev \
+              --certificate-identity-regexp "${IDENTITY_RE}" \
+              "${name}@${digest}" > /dev/null
+            checked=$((checked + 1))
+          done
+          echo "verified ${checked} base image(s)"
+
+      - name: Sign
+        if: inputs.push
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+        run: cosign sign --yes --recursive "${REF}"
+
+      # A cosign-signed SBOM per platform manifest (and on the index for a single platform),
+      # which admission policies such as Kyverno verifyImages attestations can require.
+      - name: Attest SBOM
+        if: inputs.push
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          set -euo pipefail
+          sboms="$(docker buildx imagetools inspect "${REF}" --format '{{ json .SBOM }}')"
+          index="$(docker buildx imagetools inspect --raw "${REF}")"
+          platforms=()
+          while IFS= read -r line; do platforms+=("${line}"); done < <(jq -r '.manifests[] | select(.platform.os != "unknown")
+            | "\(.digest) \(.platform.os)/\(.platform.architecture)\(if .platform.variant then "/" + .platform.variant else "" end)"' <<<"${index}")
+          for entry in "${platforms[@]}"; do
+            digest="${entry%% *}"; platform="${entry#* }"
+            jq --arg p "${platform}" 'if has("SPDX") then .SPDX else .[$p].SPDX end' <<<"${sboms}" > sbom.spdx.json
+            [[ "$(jq -r '.spdxVersion // empty' sbom.spdx.json)" != "" ]] || { echo "::error::no SPDX SBOM for ${platform}"; exit 1; }
+            cosign attest --yes --type spdxjson --predicate sbom.spdx.json "${IMAGE}@${digest}"
+            if [[ "${#platforms[@]}" -eq 1 ]]; then
+              cosign attest --yes --type spdxjson --predicate sbom.spdx.json "${REF}"
+            fi
+          done
+          rm -f sbom.spdx.json
+
+      - name: Verify signature
+        if: inputs.push
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          cosign verify \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp "^${SERVER_URL}/zama-ai/ci-templates/\.github/workflows/common-docker-product\.yml@" \
+            --certificate-github-workflow-repository "${GITHUB_REPOSITORY}" \
+            "${REF}" > /dev/null
+          echo "signature verified for ${REF}"
+
+      - name: Publish tags
+        if: inputs.push
+        env:
+          REF: ${{ steps.ref.outputs.ref }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          args=()
+          while IFS= read -r tag; do [[ -n "${tag}" ]] && args+=(--tag "${tag}"); done <<<"${TAGS}"
+          [[ "${#args[@]}" -gt 0 ]] || { echo "::error::no tag computed"; exit 1; }
+          docker buildx imagetools create "${args[@]}" "${REF}"
+
+      - name: Result
+        id: result
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          {
+            echo "image=${IMAGE}"
+            echo "digest=${DIGEST}"
+            echo "tags<<EOF"
+            if [[ "${PUSH}" == "true" ]]; then echo "${TAGS}"; fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### ${IMAGE}"
+            if [[ "${PUSH}" == "true" ]]; then
+              echo "Signed digest: \`${DIGEST}\`"
+              echo '```'
+              echo "${TAGS}"
+              echo '```'
+            else
+              echo "Built and scanned locally, not pushed."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

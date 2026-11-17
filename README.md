@@ -11,6 +11,7 @@ Continuous Integration templates for Security and Quality. These snippets are st
 
 ## Docker
 
+- Build, scan, sign and publish an image to Harbor (or any registry) with [common-docker-product](./.github/workflows/common-docker-product.yml): push by digest with SBOM and provenance, Trivy gate, Chainguard base image verification, keyless cosign signature and SBOM attestation, tags last
 - Lint your dockerfile with [hadolint](./lint/hadolint.yml)
 
 > [!TIP]
