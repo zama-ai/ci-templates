@@ -186,8 +186,18 @@ jobs:
         env:
           PLATFORMS: ${{ inputs.platforms }}
           ENVIRONMENT: ${{ inputs.environment }}
+          DOCKER_CONTEXT: ${{ inputs.docker-context }}
+          DOCKER_FILE: ${{ inputs.docker-file }}
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
         run: |
+          # docker/build-push-action also accepts a remote Git or HTTP context: only a path inside
+          # the checked-out repository is allowed, so the image is always built from this commit.
+          for path in "${DOCKER_CONTEXT}" "${DOCKER_FILE}"; do
+            if [[ "${path}" == *://* || "${path}" == git@* || "${path}" == /* || "${path}" =~ (^|/)\.\.(/|$) ]]; then
+              echo "::error::docker-context and docker-file must be relative paths inside the repository, got '${path}'"
+              exit 1
+            fi
+          done
           if [[ "${PUSH}" == "true" && -z "${REGISTRY_USERNAME}" ]]; then
             echo "::error::push is true but REGISTRY_USERNAME / REGISTRY_PASSWORD are not set${ENVIRONMENT:+ in environment ${ENVIRONMENT}}"
             exit 1
@@ -236,7 +246,7 @@ jobs:
         env:
           DOCKER_BUILD_RECORD_UPLOAD: "false"
         with:
-          context: ${{ inputs.docker-context }}
+          context: ${{ inputs.docker-context }} # zizmor: ignore[template-injection] validated as a local path in "Check inputs"
           file: ${{ inputs.docker-file }}
           target: ${{ inputs.docker-target }}
           build-args: ${{ inputs.build-args }}
@@ -256,7 +266,7 @@ jobs:
         env:
           DOCKER_BUILD_RECORD_UPLOAD: "false"
         with:
-          context: ${{ inputs.docker-context }}
+          context: ${{ inputs.docker-context }} # zizmor: ignore[template-injection] validated as a local path in "Check inputs"
           file: ${{ inputs.docker-file }}
           target: ${{ inputs.docker-target }}
           build-args: ${{ inputs.build-args }}
