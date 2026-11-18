@@ -5,10 +5,11 @@
 #   2. gate on a Trivy scan of that digest;
 #   3. verify every Chainguard base image the build used (read from the provenance) against
 #      Chainguard's signing identity;
-#   4. sign the digest keyless (GitHub OIDC), attest each platform's SPDX SBOM with cosign,
-#      and verify the signature against this workflow's identity;
+#   4. sign the digest keyless (GitHub OIDC), attest the SPDX SBOM with cosign, and verify the
+#      signature against this workflow's identity;
 #   5. publish the tags last, pointing at the already-signed digest.
 # Without push (pull requests), the image is built and scanned locally, nothing leaves the runner.
+# One platform per call: run it once per architecture, on a runner of that architecture.
 #
 # Caller example:
 #
@@ -24,42 +25,58 @@
 #         push: ${{ github.event_name != 'pull_request' }}
 #         environment: ${{ github.event_name != 'pull_request' && 'image-publish' || '' }}
 #       secrets:
+#         REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+#         REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
 #         CGR_USERNAME: ${{ secrets.CGR_USERNAME }}
 #         CGR_PASSWORD: ${{ secrets.CGR_PASSWORD }}
 #
 # Protecting the push credentials: create a GitHub environment (here `image-publish`) that
 # only the publishing branches and tags may use, and store REGISTRY_USERNAME /
-# REGISTRY_PASSWORD there, not as repository secrets. A caller cannot hand environment
-# secrets to a reusable workflow, so this job enters the environment itself (the
-# `environment` input) and reads them directly; an environment secret wins over a secret of
-# the same name passed by the caller. The Chainguard token is read-only and needed by pull
+# REGISTRY_PASSWORD there, not as repository secrets. The caller still passes them by name as
+# above (a secret that is not passed resolves to an empty string in a reusable workflow, even
+# when it exists in the environment), and this job enters the environment (the `environment`
+# input), so it receives the environment's values. Outside that environment, on any other
+# ref, the names resolve to nothing. The Chainguard token is read-only and needed by pull
 # request builds too, so it can stay a repository secret.
 #
-# Verifying a published image (deploy side, e.g. a Kyverno verifyImages rule):
+# Verifying a published image (deploy side, e.g. a Kyverno verifyImages rule). The identity
+# regexp alone accepts a signature made from any ref of ci-templates, so also pin the caller's
+# repository, publishing ref and trigger:
 #
 #   cosign verify \
 #     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
 #     --certificate-identity-regexp '^https://github.com/zama-ai/ci-templates/\.github/workflows/common-docker-product\.yml@' \
 #     --certificate-github-workflow-repository <owner>/<caller-repo> \
+#     --certificate-github-workflow-ref refs/heads/main \
+#     --certificate-github-workflow-trigger push \
 #     <registry>/<image-name>@<digest>
 #
-# Provenance at mode=max records build-arg values: never pass a secret through `build-args`.
+# Keyless signing records the caller's repository name, workflow, ref and commit SHA in the
+# public Sigstore transparency logs (Fulcio and Rekor), permanently, private repositories
+# included. Do not call this workflow with push for a repository whose name or history must
+# stay confidential.
+#
+# Provenance at mode=max records build-arg values and the Dockerfile: never pass a secret
+# through `build-args`, use the BUILD_SECRETS secret (BuildKit secret mounts) instead.
 name: Docker build, scan, sign and publish (product)
 
 on:
   workflow_call:
     secrets:
       REGISTRY_USERNAME:
-        description: "Registry user (Harbor: the project's robot account). Prefer an environment secret, see `environment`"
+        description: "Registry user (Harbor: the project's robot account). Pass it by name; store it in the `environment`"
         required: false
       REGISTRY_PASSWORD:
-        description: "Registry password or token. Prefer an environment secret, see `environment`"
+        description: "Registry password or token. Pass it by name; store it in the `environment`"
         required: false
       CGR_USERNAME:
         description: "Chainguard pull token user, to pull and verify cgr.dev base images"
         required: false
       CGR_PASSWORD:
         description: "Chainguard pull token password"
+        required: false
+      BUILD_SECRETS:
+        description: "BuildKit secrets, one id=value per line, read in the Dockerfile with RUN --mount=type=secret,id=<id>. Never recorded in the image or provenance"
         required: false
     inputs:
       registry:
@@ -78,10 +95,6 @@ on:
         description: "GitHub environment holding REGISTRY_USERNAME / REGISTRY_PASSWORD, restricted to the publishing refs. Empty: none"
         type: string
         default: ""
-      ref:
-        description: "Git ref to build (default: the triggering ref)"
-        type: string
-        default: ""
       docker-context:
         type: string
         default: "."
@@ -97,12 +110,12 @@ on:
         description: "Extra build args, one KEY=VALUE per line. Recorded in the provenance: no secrets"
         type: string
         default: ""
-      platforms:
-        description: "Comma separated platforms. A local build (push: false) supports one only"
+      platform:
+        description: "Single target platform. Use a runner of the same architecture (no emulation is set up)"
         type: string
         default: "linux/amd64"
       tags:
-        description: "docker/metadata-action tag rules"
+        description: "docker/metadata-action tag rules. `latest` is never added"
         type: string
         default: |
           type=sha,prefix=,format=short
@@ -147,10 +160,10 @@ on:
         description: "<registry>/<image-name>"
         value: ${{ jobs.build.outputs.image }}
       digest:
-        description: "Signed manifest digest (empty without push)"
+        description: "Signed manifest digest (empty without push). With a matrix caller: the last job to finish"
         value: ${{ jobs.build.outputs.digest }}
       tags:
-        description: "Published tags, one per line"
+        description: "Published tags, one per line. With a matrix caller: the last job to finish"
         value: ${{ jobs.build.outputs.tags }}
 
 permissions: {}
@@ -179,35 +192,49 @@ jobs:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
-          ref: ${{ inputs.ref }}
           persist-credentials: false
 
       - name: Check inputs
         env:
-          PLATFORMS: ${{ inputs.platforms }}
+          PLATFORM: ${{ inputs.platform }}
           ENVIRONMENT: ${{ inputs.environment }}
           DOCKER_CONTEXT: ${{ inputs.docker-context }}
           DOCKER_FILE: ${{ inputs.docker-file }}
+          TAGS: ${{ inputs.tags }}
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
         run: |
-          # docker/build-push-action also accepts a remote Git or HTTP context: only a path inside
-          # the checked-out repository is allowed, so the image is always built from this commit.
-          for path in "${DOCKER_CONTEXT}" "${DOCKER_FILE}"; do
-            if [[ "${path}" == *://* || "${path}" == git@* || "${path}" == /* || "${path}" =~ (^|/)\.\.(/|$) ]]; then
-              echo "::error::docker-context and docker-file must be relative paths inside the repository, got '${path}'"
+          set -euo pipefail
+          workspace="$(realpath -e "${GITHUB_WORKSPACE}")"
+          inside() { [[ "$1" == "${workspace}" || "$1" == "${workspace}/"* ]]; }
+          # docker/build-push-action also accepts remote Git or HTTP contexts, with or without a
+          # scheme: only an existing directory inside the checkout is allowed (buildx prefers a
+          # local directory), so the image is always built from this commit.
+          context="$(realpath -e -- "${DOCKER_CONTEXT}" 2>/dev/null || true)"
+          if [[ -z "${context}" || ! -d "${context}" ]] || ! inside "${context}"; then
+            echo "::error::docker-context must be an existing directory inside the repository, got '${DOCKER_CONTEXT}'"
+            exit 1
+          fi
+          if [[ -n "${DOCKER_FILE}" ]]; then
+            file="$(realpath -e -- "${DOCKER_FILE}" 2>/dev/null || true)"
+            if [[ -z "${file}" || ! -f "${file}" ]] || ! inside "${file}"; then
+              echo "::error::docker-file must be an existing file inside the repository, got '${DOCKER_FILE}'"
               exit 1
             fi
-          done
+          fi
+          if [[ "${PLATFORM}" == *,* || -z "${PLATFORM}" ]]; then
+            echo "::error::platform takes exactly one platform, got '${PLATFORM}'. Call the workflow once per architecture"
+            exit 1
+          fi
+          if [[ -z "$(tr -d '[:space:]' <<<"${TAGS}")" ]]; then
+            echo "::error::the tags input is empty"
+            exit 1
+          fi
           if [[ "${PUSH}" == "true" && -z "${REGISTRY_USERNAME}" ]]; then
-            echo "::error::push is true but REGISTRY_USERNAME / REGISTRY_PASSWORD are not set${ENVIRONMENT:+ in environment ${ENVIRONMENT}}"
+            echo "::error::push is true but REGISTRY_USERNAME is empty. Pass REGISTRY_USERNAME / REGISTRY_PASSWORD by name in the caller's secrets block${ENVIRONMENT:+, and store them in the ${ENVIRONMENT} environment}"
             exit 1
           fi
           if [[ "${PUSH}" == "true" && -z "${ENVIRONMENT}" ]]; then
             echo "::warning::pushing with registry credentials outside a GitHub environment: any workflow on any branch can read them. Set the environment input"
-          fi
-          if [[ "${PUSH}" != "true" && "${PLATFORMS}" == *,* ]]; then
-            echo "::error::a local build (push: false) supports a single platform, got ${PLATFORMS}"
-            exit 1
           fi
 
       - name: Set up Docker Buildx
@@ -235,6 +262,7 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: ${{ inputs.tags }}
+          flavor: latest=false
           labels: |
             org.opencontainers.image.vendor=zama.ai
 
@@ -250,7 +278,8 @@ jobs:
           file: ${{ inputs.docker-file }}
           target: ${{ inputs.docker-target }}
           build-args: ${{ inputs.build-args }}
-          platforms: ${{ inputs.platforms }}
+          secrets: ${{ secrets.BUILD_SECRETS }}
+          platforms: ${{ inputs.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
@@ -270,7 +299,8 @@ jobs:
           file: ${{ inputs.docker-file }}
           target: ${{ inputs.docker-target }}
           build-args: ${{ inputs.build-args }}
-          platforms: ${{ inputs.platforms }}
+          secrets: ${{ secrets.BUILD_SECRETS }}
+          platforms: ${{ inputs.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           load: true
           tags: ${{ env.IMAGE }}:ci-local
@@ -281,18 +311,21 @@ jobs:
         id: ref
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           if [[ "${PUSH}" == "true" ]]; then
+            # Fail before signing rather than after: a signed digest with no tag is useless.
+            [[ -n "$(tr -d '[:space:]' <<<"${TAGS}")" ]] || { echo "::error::no tag computed for this ref, check the tags rules"; exit 1; }
+            [[ "${DIGEST}" == sha256:* ]] || { echo "::error::the build returned no digest"; exit 1; }
             echo "ref=${IMAGE}@${DIGEST}" >> "$GITHUB_OUTPUT"
           else
             echo "ref=${IMAGE}:ci-local" >> "$GITHUB_OUTPUT"
           fi
 
+      # No TRIVY_USERNAME/PASSWORD: Trivy would offer them to every registry it contacts (its DB
+      # mirrors included). It reads the registry login from the host-scoped docker config instead.
       - name: Scan (gate)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        env:
-          TRIVY_USERNAME: ${{ inputs.push && secrets.REGISTRY_USERNAME || '' }}
-          TRIVY_PASSWORD: ${{ inputs.push && secrets.REGISTRY_PASSWORD || '' }}
         with:
           image-ref: ${{ steps.ref.outputs.ref }}
           format: table
@@ -303,7 +336,7 @@ jobs:
 
       - name: Install cosign
         if: inputs.push
-        uses: sigstore/cosign-installer@faadad0cce49287aee09b3a48701e75088a2c6ad # v4.0.0
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
 
       # Reads the base images from the build's own provenance, so it checks exactly what was used.
       - name: Verify base images (gate)
@@ -314,22 +347,22 @@ jobs:
           IDENTITY_RE: ${{ inputs.base-image-identity-regexp }}
         run: |
           set -euo pipefail
-          # Single platform: {"SLSA": ...}; several: {"linux/amd64": {"SLSA": ...}, ...}. SLSA v0.2 or v1.
-          uris=()
-          while IFS= read -r line; do uris+=("${line}"); done < <(
-            docker buildx imagetools inspect "${REF}" --format '{{ json .Provenance }}' \
-              | jq -r '[.. | objects | (.materials?, .buildDefinition?.resolvedDependencies?) | select(type == "array") | .[]
-                  | select(.uri?) | "\(.uri) \(.digest.sha256 // "")"] | unique[]'
-          )
+          # Fails closed: an unreadable provenance, an empty material list or zero verified images
+          # stop the job. Values are captured first so a failing command aborts under `set -e`.
+          provenance="$(docker buildx imagetools inspect "${REF}" --format '{{ json .Provenance }}')"
+          materials="$(jq -r '[.. | objects | (.materials?, .buildDefinition?.resolvedDependencies?) | select(type == "array") | .[]
+            | select(.uri?) | "\(.uri) \(.digest.sha256 // "")"] | unique[]' <<<"${provenance}")"
+          [[ -n "${materials}" ]] || { echo "::error::no build materials in the provenance of ${REF}"; exit 1; }
+          read -r -a prefixes <<<"${PREFIXES}"
           checked=0
-          for entry in "${uris[@]}"; do
+          while IFS= read -r entry; do
             uri="${entry%% *}"; material_digest="${entry#* }"
             [[ "${uri}" == pkg:docker/* ]] || continue
             ref="${uri#pkg:docker/}"
             name="${ref%%@*}"; name="${name%%\?*}"
             digest="${material_digest:+sha256:${material_digest}}"
             match=false
-            for prefix in ${PREFIXES}; do [[ "${name}" == "${prefix}"* ]] && match=true; done
+            for prefix in "${prefixes[@]}"; do [[ "${name}" == "${prefix}"* ]] && match=true; done
             [[ "${match}" == "true" ]] || { echo "skip ${name} (not a verified prefix)"; continue; }
             [[ -n "${digest}" ]] || { echo "::error::no digest for base image ${name} in the provenance"; exit 1; }
             echo "verify ${name}@${digest}"
@@ -338,7 +371,11 @@ jobs:
               --certificate-identity-regexp "${IDENTITY_RE}" \
               "${name}@${digest}" > /dev/null
             checked=$((checked + 1))
-          done
+          done <<<"${materials}"
+          if [[ "${checked}" -eq 0 ]]; then
+            echo "::error::no base image matched '${PREFIXES}': nothing was verified. Build FROM a matching image, adjust base-image-prefixes, or set verify-base-images: false"
+            exit 1
+          fi
           echo "verified ${checked} base image(s)"
 
       - name: Sign
@@ -347,8 +384,8 @@ jobs:
           REF: ${{ steps.ref.outputs.ref }}
         run: cosign sign --yes --recursive "${REF}"
 
-      # A cosign-signed SBOM per platform manifest (and on the index for a single platform),
-      # which admission policies such as Kyverno verifyImages attestations can require.
+      # A cosign-signed SBOM, which admission policies such as Kyverno verifyImages attestations
+      # can require.
       - name: Attest SBOM
         if: inputs.push
         env:
@@ -357,18 +394,16 @@ jobs:
           set -euo pipefail
           sboms="$(docker buildx imagetools inspect "${REF}" --format '{{ json .SBOM }}')"
           index="$(docker buildx imagetools inspect --raw "${REF}")"
-          platforms=()
-          while IFS= read -r line; do platforms+=("${line}"); done < <(jq -r '.manifests[] | select(.platform.os != "unknown")
-            | "\(.digest) \(.platform.os)/\(.platform.architecture)\(if .platform.variant then "/" + .platform.variant else "" end)"' <<<"${index}")
-          for entry in "${platforms[@]}"; do
-            digest="${entry%% *}"; platform="${entry#* }"
-            jq --arg p "${platform}" 'if has("SPDX") then .SPDX else .[$p].SPDX end' <<<"${sboms}" > sbom.spdx.json
-            [[ "$(jq -r '.spdxVersion // empty' sbom.spdx.json)" != "" ]] || { echo "::error::no SPDX SBOM for ${platform}"; exit 1; }
-            cosign attest --yes --type spdxjson --predicate sbom.spdx.json "${IMAGE}@${digest}"
-            if [[ "${#platforms[@]}" -eq 1 ]]; then
-              cosign attest --yes --type spdxjson --predicate sbom.spdx.json "${REF}"
-            fi
-          done
+          manifests="$(jq -r '.manifests[] | select(.platform.os != "unknown")
+            | "\(.digest) \(.platform.os)/\(.platform.architecture)\(if .platform.variant then "/" + .platform.variant else "" end)"' <<<"${index}")"
+          [[ "$(grep -c . <<<"${manifests}")" -eq 1 ]] || { echo "::error::expected exactly one platform manifest in ${REF}"; exit 1; }
+          digest="${manifests%% *}"; platform="${manifests#* }"
+          jq --arg p "${platform}" 'if has("SPDX") then .SPDX else .[$p].SPDX end' <<<"${sboms}" > sbom.spdx.json
+          [[ -n "$(jq -r '.spdxVersion // empty' sbom.spdx.json)" ]] || { echo "::error::no SPDX SBOM for ${platform}"; exit 1; }
+          # On the platform manifest and on the index the tags point at, so a policy finds it
+          # whichever digest it resolves.
+          cosign attest --yes --type spdxjson --predicate sbom.spdx.json "${IMAGE}@${digest}"
+          cosign attest --yes --type spdxjson --predicate sbom.spdx.json "${REF}"
           rm -f sbom.spdx.json
 
       - name: Verify signature
@@ -393,7 +428,6 @@ jobs:
           set -euo pipefail
           args=()
           while IFS= read -r tag; do [[ -n "${tag}" ]] && args+=(--tag "${tag}"); done <<<"${TAGS}"
-          [[ "${#args[@]}" -gt 0 ]] || { echo "::error::no tag computed"; exit 1; }
           docker buildx imagetools create "${args[@]}" "${REF}"
 
       - name: Result
